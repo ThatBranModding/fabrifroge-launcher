@@ -1,0 +1,93 @@
+{
+  "format": 1,
+  "restore": {
+    "C:\\Users\\branj\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\FabriFrogeLauncher.csproj": {}
+  },
+  "projects": {
+    "C:\\Users\\branj\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\FabriFrogeLauncher.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\branj\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\FabriFrogeLauncher.csproj",
+        "projectName": "FabriFrogeLauncher",
+        "projectPath": "C:\\Users\\branj\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\FabriFrogeLauncher.csproj",
+        "packagesPath": "C:\\Users\\branj\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\branj\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\branj\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0-windows"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0-windows7.0": {
+            "targetAlias": "net8.0-windows",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0-windows7.0": {
+          "targetAlias": "net8.0-windows",
+          "dependencies": {
+            "CmlLib.Core": {
+              "target": "Package",
+              "version": "[4.0.6, )"
+            },
+            "CmlLib.Core.Auth.Microsoft": {
+              "target": "Package",
+              "version": "[3.3.1, )"
+            },
+            "CmlLib.Core.Installer.NeoForge": {
+              "target": "Package",
+              "version": "[4.0.0, )"
+            },
+            "Microsoft.Extensions.Logging.Abstractions": {
+              "target": "Package",
+              "version": "[10.0.2, )"
+            },
+            "SkiaSharp": {
+              "target": "Package",
+              "version": "[2.88.8, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            },
+            "Microsoft.WindowsDesktop.App": {
+              "privateAssets": "none"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.400/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

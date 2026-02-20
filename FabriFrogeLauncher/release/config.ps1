@@ -1,0 +1,68 @@
+# release/config.ps1
+
+# -----------------------------
+# REQUIRED: your release config
+# -----------------------------
+
+# Pack identity
+$PackId = "fabrifroge-neoforge-1.21.1"
+
+# Remote root in SFTP (you land in / in FileZilla)
+$RemoteRoot = "/"
+
+# SFTP target (user@host)
+$SftpHost = "launcher@ftp.fabrifroge.com"
+
+# SSH/SFTP port
+$SshPort = 22
+
+$LauncherSelfPath = "/launcher/self"
+$LauncherPath     = "/launcher"
+
+$WinScpHostKey = "ssh-ed25519 255 jygYqLouvUiCQUTXy1r0EWmRXpoWSO/OHCPVwOBPiZg"
+
+# Where your server serves files.fabrifroge.com from (on the server filesystem)
+$RemoteRoot = "/C:/Users/Branserver/Downloads/nginx-1.26.3/www/files"
+
+# Optional: if ISCC.exe not in default location
+$IsccPath = "C:\Users\branj\AppData\Local\Programs\Inno Setup 6\ISCC.exe"
+
+
+
+
+# WinSCP path (optional if default works)
+$WinScpPath = "C:\Program Files (x86)\WinSCP\WinSCP.com"
+
+$WinScpComPath = "C:\Program Files (x86)\WinSCP\WinSCP.com"
+
+
+# SSH private key path (RECOMMENDED for one-click)
+# Leave "" if you are NOT using a key (password login).
+$SshKeyPath = ""
+
+$SftpPassword = "2-4Woodlands"
+
+# Local paths
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+
+# If your .csproj is NOT in repo root, set the correct relative path here:
+# Example if it lives in /FabriFrogeLauncher/FabriFrogeLauncher.csproj:
+$LauncherProject = Join-Path $RepoRoot "FabriFrogeLauncher\FabriFrogeLauncher.csproj"
+
+# Public base URL (no trailing slash)
+$PublicBaseUrl = "https://files.fabrifroge.com"
+
+# Where the launcher self update manifests live (URL paths)
+$LauncherSelfPath = "/launcher/self"
+$LauncherPath     = "/launcher"
+
+# Optional: Cloudflare purge
+$EnableCloudflarePurge = $false
+$CloudflareZoneId = "c9edd170c58b59c9bb60ffb5d960f5a4"
+$CloudflareApiToken = "de0e738fd083674d9dc4fe80cfe2207d77aae"
+
+# Only purge the “must be fresh” JSON
+$PurgeUrls = @(
+  "$PublicBaseUrl$LauncherSelfPath/latest.json",
+  "$PublicBaseUrl$LauncherPath/latest.json"
+)

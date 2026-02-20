@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "FabriFrogeLauncher": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "FF_LAUNCHER_DEV": "1"
+      }
+    }
+  }
+}
