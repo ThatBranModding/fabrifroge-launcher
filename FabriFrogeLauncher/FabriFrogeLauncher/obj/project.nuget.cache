@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "2aflTTKEATs=",
+  "dgSpecHash": "58FSuxWW+JI=",
   "success": true,
-  "projectFilePath": "C:\\Users\\branj\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\FabriFrogeLauncher.csproj",
+  "projectFilePath": "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\FabriFrogeLauncher\\FabriFrogeLauncher.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\branj\\.nuget\\packages\\cmllib.core\\4.0.6\\cmllib.core.4.0.6.nupkg.sha512",
     "C:\\Users\\branj\\.nuget\\packages\\cmllib.core.auth.microsoft\\3.3.1\\cmllib.core.auth.microsoft.3.3.1.nupkg.sha512",

@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("FabriFrogeLauncher")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c2e21a3dc75ec25ac74b261cde6b0f4862d52ae0")]
 [assembly: System.Reflection.AssemblyProductAttribute("FabriFrogeLauncher")]
 [assembly: System.Reflection.AssemblyTitleAttribute("FabriFrogeLauncher")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

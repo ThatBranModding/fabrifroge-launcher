@@ -1,15 +1,15 @@
 ﻿FabriFrogeLauncher
-1.0.0.0
+1.0.9.0
 
 winexe
 C#
 .cs
-C:\Users\branj\source\repos\FabriFrogeLauncher\FabriFrogeLauncher\obj\Release\net8.0-windows\win-x64\
+C:\Users\branj\Documents\GitHub\fabrifroge-launcher\FabriFrogeLauncher\FabriFrogeLauncher\obj\Release\net8.0-windows\win-x64\
 FabriFrogeLauncher
 none
 false
 TRACE;RELEASE;NET;NET8_0;NETCOREAPP
-C:\Users\branj\source\repos\FabriFrogeLauncher\FabriFrogeLauncher\App.xaml
+C:\Users\branj\Documents\GitHub\fabrifroge-launcher\FabriFrogeLauncher\FabriFrogeLauncher\App.xaml
 11407045341
 1644931729
 17-1265753057
