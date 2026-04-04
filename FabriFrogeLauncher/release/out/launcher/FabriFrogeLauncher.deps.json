@@ -7,7 +7,7 @@
   "targets": {
     ".NETCoreApp,Version=v8.0": {},
     ".NETCoreApp,Version=v8.0/win-x64": {
-      "FabriFrogeLauncher/1.0.9": {
+      "FabriFrogeLauncher/1.0.10": {
         "dependencies": {
           "CmlLib.Core": "4.0.6",
           "CmlLib.Core.Auth.Microsoft": "3.3.1",
@@ -204,7 +204,7 @@
     }
   },
   "libraries": {
-    "FabriFrogeLauncher/1.0.9": {
+    "FabriFrogeLauncher/1.0.10": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

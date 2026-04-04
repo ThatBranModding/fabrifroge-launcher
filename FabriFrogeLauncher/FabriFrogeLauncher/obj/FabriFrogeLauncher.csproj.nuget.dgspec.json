@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\FabriFrogeLauncher\\FabriFrogeLauncher.csproj": {}
+    "C:\\Users\\branj\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\FabriFrogeLauncher.csproj": {}
   },
   "projects": {
-    "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\FabriFrogeLauncher\\FabriFrogeLauncher.csproj": {
-      "version": "1.0.9",
+    "C:\\Users\\branj\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\FabriFrogeLauncher.csproj": {
+      "version": "1.0.10",
       "restore": {
-        "projectUniqueName": "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\FabriFrogeLauncher\\FabriFrogeLauncher.csproj",
+        "projectUniqueName": "C:\\Users\\branj\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\FabriFrogeLauncher.csproj",
         "projectName": "FabriFrogeLauncher",
-        "projectPath": "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\FabriFrogeLauncher\\FabriFrogeLauncher.csproj",
+        "projectPath": "C:\\Users\\branj\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\FabriFrogeLauncher.csproj",
         "packagesPath": "C:\\Users\\branj\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\FabriFrogeLauncher\\obj\\",
+        "outputPath": "C:\\Users\\branj\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\branj\\AppData\\Roaming\\NuGet\\NuGet.Config",
@@ -86,11 +86,6 @@
             }
           },
           "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.400/PortableRuntimeIdentifierGraph.json"
-        }
-      },
-      "runtimes": {
-        "win-x64": {
-          "#import": []
         }
       }
     }

@@ -49,7 +49,7 @@ public partial class MainWindow : Window
     private bool _ramInitDone = false;
 
     // Default RAM when settings missing
-    private const int DefaultRamMb = 10240; // 10GB
+    private const int DefaultRamMb = 7168; // 7GB
 
     // -------------------------
     // HARD LOCKOUT (launcher update vs modpack update vs play)
@@ -89,10 +89,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        InstallPathBox.Text = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "FabriFroge"
-        );
+        InstallPathBox.Text = GetDefaultInstallRoot();
 
         // Start offline by default; we will restore cached session (if any) WITHOUT validating it here.
         _session = MSession.CreateOfflineSession(Environment.UserName);
@@ -129,11 +126,10 @@ public partial class MainWindow : Window
         // Restore cached session on startup, but DO NOT validate token here.
         await TryRestoreSessionOnStartupAsync();
 
-        // ✅ Run self-updater FIRST (it holds a lock while it evaluates/prompts/applies)
-        // so the pack auto-check won't early-return due to IsLauncherUpdateRunning.
+        // Run self-updater FIRST
         await CheckLauncherSelfUpdateAsync();
 
-        // ✅ Now safely check pack installed/latest on launch.
+        // Now safely check pack installed/latest on launch.
         if (!_didAutoCheck)
         {
             _didAutoCheck = true;
@@ -154,6 +150,29 @@ public partial class MainWindow : Window
     }
 
     // -------------------------
+    // Helpers
+    // -------------------------
+    private string GetDefaultInstallRoot()
+    {
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "FabriFroge");
+    }
+
+    private string GetInstallRoot()
+    {
+        var fromUi = InstallPathBox.Text?.Trim();
+        if (!string.IsNullOrWhiteSpace(fromUi))
+            return fromUi;
+
+        var resolved = _settings?.GetResolvedInstallDirectory(GetDefaultInstallRoot());
+        if (!string.IsNullOrWhiteSpace(resolved))
+            return resolved;
+
+        return GetDefaultInstallRoot();
+    }
+
+    // -------------------------
     // Titlebar window controls
     // -------------------------
     private void TitleBar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -164,7 +183,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        try { DragMove(); } catch { /* ignore */ }
+        try { DragMove(); } catch { }
     }
 
     private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
@@ -199,7 +218,6 @@ public partial class MainWindow : Window
         if (ConsolePanel != null)
             ConsolePanel.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
 
-        // If the drawer is translated off-screen, Visibility alone won’t show it.
         if (ConsoleDrawerTransform != null)
             ConsoleDrawerTransform.X = visible ? 0 : 540;
 
@@ -216,7 +234,7 @@ public partial class MainWindow : Window
 
         var ramOptions = new[]
         {
-            2048, 3072, 4096, 6144, 8192, 10240, 12288, 16384, 20480, 24576, 32768
+            5120, 6144, 7168, 8192, 9216, 10240, 11264, 12288, 13312, 14336, 15360, 16384, 17408, 18432, 19456, 20480, 21504, 22528, 23552, 24576, 25600, 26624, 27648, 28672, 29696, 30720, 31744, 32768, 65536
         };
 
         RamComboBox.Items.Clear();
@@ -234,8 +252,12 @@ public partial class MainWindow : Window
 
     private void LoadSettingsAndApply()
     {
-        var installRoot = InstallPathBox.Text ?? "";
-        _settings = LauncherSettings.Load(installRoot, Log);
+        _settings = LauncherSettings.Load(Log);
+
+        if (string.IsNullOrWhiteSpace(_settings.InstallDirectory))
+            _settings.InstallDirectory = GetDefaultInstallRoot();
+
+        InstallPathBox.Text = _settings.InstallDirectory;
 
         if (_settings.RamMb <= 0)
             _settings.RamMb = DefaultRamMb;
@@ -265,8 +287,8 @@ public partial class MainWindow : Window
 
     private void SaveSettings()
     {
-        var installRoot = InstallPathBox.Text ?? "";
-        _settings.Save(installRoot, Log);
+        _settings.InstallDirectory = GetInstallRoot();
+        _settings.Save(Log);
     }
 
     private void ApplyRamToUi(int ramMb)
@@ -320,7 +342,6 @@ public partial class MainWindow : Window
 
         if (!_bgShouldRun)
         {
-            // Pause
             try { _bgCts?.Cancel(); } catch { }
             try { _bgCts?.Dispose(); } catch { }
             _bgCts = null;
@@ -331,7 +352,6 @@ public partial class MainWindow : Window
         }
         else
         {
-            // Resume
             Log("Background resumed.");
             _ = StartWebpBackgroundAsync();
         }
@@ -425,13 +445,11 @@ public partial class MainWindow : Window
     // -------------------------
     private async Task CheckLauncherSelfUpdateAsync()
     {
-        // Acquire launcher-update lock (will refuse if pack op running)
         if (!TryBeginLauncherUpdate())
             return;
 
         try
         {
-            // Disable UI for pack/play while we *evaluate and possibly download/apply*.
             Dispatcher.BeginInvoke(new Action(() => SetButtonsEnabled(false)));
 
             using var http = Net.CreateHttpClient();
@@ -483,7 +501,6 @@ public partial class MainWindow : Window
                 return;
             }
 
-            // Still holding launcher-update lock here, so pack ops cannot start.
             var downloaded = await SelfUpdater.DownloadUpdateAsync(http, latest.Url, Log, CancellationToken.None);
             if (downloaded == null)
                 return;
@@ -526,7 +543,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            var installRoot = InstallPathBox.Text ?? "";
+            var installRoot = GetInstallRoot();
             var restored = AuthService.TryLoadSession(installRoot, Log);
 
             if (restored != null)
@@ -549,7 +566,7 @@ public partial class MainWindow : Window
     }
 
     // -------------------------
-    // ✅ Token validation + forced reauth (ONLY when clicking Play)
+    // Token validation + forced reauth (ONLY when clicking Play)
     // -------------------------
     private static async Task<bool> ValidateMinecraftTokenAsync(HttpClient http, string accessToken, CancellationToken ct)
     {
@@ -576,7 +593,7 @@ public partial class MainWindow : Window
 
     private async Task<MSession> EnsureFreshSessionForPlayAsync(HttpClient http, CancellationToken ct)
     {
-        var installRoot = InstallPathBox.Text ?? "";
+        var installRoot = GetInstallRoot();
 
         var loaded = AuthService.TryLoadSession(installRoot, Log);
         if (loaded != null)
@@ -596,14 +613,12 @@ public partial class MainWindow : Window
             return sessionToUse;
         }
 
-        Log("Session expired/invalid. Clearing cached auth and re-signing in...");
-        AuthService.ClearSavedSession(installRoot, Log);
+        Log("Session expired/invalid. Re-signing in...");
 
         var fresh = await AuthService.SignInMicrosoftAsync(installRoot, Log, ct);
         _session = fresh;
 
         SignedInAsText.Text = string.IsNullOrWhiteSpace(fresh.Username) ? "(signed in)" : fresh.Username;
-        AuthService.SaveSession(installRoot, fresh, Log);
 
         Log("Re-auth complete.");
         return fresh;
@@ -709,11 +724,12 @@ public partial class MainWindow : Window
             using var http = Net.CreateHttpClient();
             var (_, manifest) = await FetchLatestAndManifestAsync(_cts.Token);
 
-            await JavaRuntime.EnsureTemurin21Async(http, InstallPathBox.Text ?? "", Log, _cts.Token);
+            string installRoot = GetInstallRoot();
+            await JavaRuntime.EnsureTemurin21Async(http, installRoot, Log, _cts.Token);
 
             bool changed = await Installer.InstallOrUpdateAsync(
                 http,
-                InstallPathBox.Text ?? "",
+                installRoot,
                 manifest,
                 Log,
                 SetProgress,
@@ -801,13 +817,15 @@ public partial class MainWindow : Window
         InstallButton.IsEnabled = enabled;
         RepairButton.IsEnabled = enabled;
 
+        if (SwapAccountsButton != null)
+            SwapAccountsButton.IsEnabled = enabled;
+
         PlayButton.IsEnabled = enabled;
         PlayIconButton.IsEnabled = enabled;
 
         SignInButton.IsEnabled = enabled;
         SignOutButton.IsEnabled = enabled;
 
-        // Allow these even when locked (UI convenience)
         ToggleConsoleButton.IsEnabled = true;
         PlayMenuButton.IsEnabled = true;
 
@@ -829,7 +847,7 @@ public partial class MainWindow : Window
 
         _lastPackId = manifest.PackId;
         LatestVersionText.Text = manifest.Version;
-        InstalledVersionText.Text = ReadInstalledVersion(InstallPathBox.Text ?? "", manifest.PackId);
+        InstalledVersionText.Text = ReadInstalledVersion(GetInstallRoot(), manifest.PackId);
 
         return (latest, manifest);
     }
@@ -853,7 +871,7 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(_lastPackId))
             return;
 
-        InstalledVersionText.Text = ReadInstalledVersion(InstallPathBox.Text ?? "", _lastPackId);
+        InstalledVersionText.Text = ReadInstalledVersion(GetInstallRoot(), _lastPackId);
     }
 
     private void Browse_Click(object sender, RoutedEventArgs e)
@@ -868,8 +886,9 @@ public partial class MainWindow : Window
         if (dlg.ShowDialog() == WinFormsDialogResult.OK && !string.IsNullOrWhiteSpace(dlg.SelectedPath))
         {
             InstallPathBox.Text = dlg.SelectedPath;
+            _settings.InstallDirectory = dlg.SelectedPath;
+            SaveSettings();
             RefreshInstalledLabelIfPossible();
-            LoadSettingsAndApply();
         }
     }
 
@@ -943,15 +962,15 @@ public partial class MainWindow : Window
 
             SetButtonsEnabled(false);
 
+            var installRoot = GetInstallRoot();
+
             MSession session = await AuthService.SignInMicrosoftAsync(
-                InstallPathBox.Text ?? "",
+                installRoot,
                 Log,
                 _cts.Token);
 
             _session = session;
             SignedInAsText.Text = string.IsNullOrWhiteSpace(session.Username) ? "(signed in)" : session.Username;
-
-            AuthService.SaveSession(InstallPathBox.Text ?? "", session, Log);
 
             System.Windows.MessageBox.Show($"Signed in as {SignedInAsText.Text}", "FabriFroge Launcher");
         }
@@ -966,25 +985,73 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SignOutButton_Click(object sender, RoutedEventArgs e)
+    private async void SignOutButton_Click(object sender, RoutedEventArgs e)
     {
         if (IsLauncherUpdateRunning) return;
         if (IsPackOpRunning) return;
 
         try
         {
-            AuthService.ClearSavedSession(InstallPathBox.Text ?? "", Log);
+            _cts?.Cancel();
+            _cts = new CancellationTokenSource();
+
+            SetButtonsEnabled(false);
+
+            var installRoot = GetInstallRoot();
+
+            await AuthService.SignOutAsync(installRoot, Log);
+
             _session = MSession.CreateOfflineSession(Environment.UserName);
             SignedInAsText.Text = "(offline)";
+
+            System.Windows.MessageBox.Show("Signed out.", "FabriFroge Launcher");
         }
         catch (Exception ex)
         {
             Log(ex.ToString());
-            System.Windows.MessageBox.Show(ex.Message, "Error");
+            System.Windows.MessageBox.Show(ex.Message, "Sign Out Error");
+        }
+        finally
+        {
+            SetButtonsEnabled(true);
         }
     }
 
-    // ✅ Play: validate/refresh auth here (NOT on startup)
+    private async void SwapAccountsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (IsLauncherUpdateRunning) return;
+        if (IsPackOpRunning) return;
+
+        try
+        {
+            _cts?.Cancel();
+            _cts = new CancellationTokenSource();
+
+            SetButtonsEnabled(false);
+
+            var installRoot = GetInstallRoot();
+
+            MSession session = await AuthService.SwapAccountsAsync(
+                installRoot,
+                Log,
+                _cts.Token);
+
+            _session = session;
+            SignedInAsText.Text = string.IsNullOrWhiteSpace(session.Username) ? "(signed in)" : session.Username;
+
+            System.Windows.MessageBox.Show($"Switched to {SignedInAsText.Text}", "FabriFroge Launcher");
+        }
+        catch (Exception ex)
+        {
+            Log(ex.ToString());
+            System.Windows.MessageBox.Show(ex.Message, "Swap Accounts Error");
+        }
+        finally
+        {
+            SetButtonsEnabled(true);
+        }
+    }
+
     private async void PlayButton_Click(object sender, RoutedEventArgs e)
     {
         if (IsLauncherUpdateRunning)
@@ -1017,19 +1084,19 @@ public partial class MainWindow : Window
 
             using var http = Net.CreateHttpClient();
 
-            // ensure session is valid RIGHT NOW
             var sessionToUse = await EnsureFreshSessionForPlayAsync(http, _cts.Token);
 
             var (_, manifest) = await FetchLatestAndManifestAsync(_cts.Token);
 
-            await JavaRuntime.EnsureTemurin21Async(http, InstallPathBox.Text ?? "", Log, _cts.Token);
+            string installRoot = GetInstallRoot();
+            await JavaRuntime.EnsureTemurin21Async(http, installRoot, Log, _cts.Token);
 
             int ramToUse = _settings?.RamMb > 0 ? _settings.RamMb : DefaultRamMb;
             ApplyRamToUi(ramToUse);
 
             await GameEngine.LaunchAsync(
                 http,
-                InstallPathBox.Text ?? "",
+                installRoot,
                 manifest,
                 sessionToUse,
                 Environment.UserName,

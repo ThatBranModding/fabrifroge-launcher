@@ -1,5 +1,8 @@
-using System;
+﻿using System;
 using System.IO;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,25 +15,60 @@ public static class AuthService
 {
     private const string SessionFileName = "ms_session.json";
 
-    // Primary location (THIS is what MainWindow should use)
+    // Optional debug toggle file (place inside installRoot)
+    private const string AuthDebugToggleFile = "enable_auth_debug.txt";
+    private const string AuthDebugReportFile = "auth_debug_report.txt";
+
+    // ---- Paths ----
+
     private static string GetPrimarySessionPath(string installRoot)
         => Path.Combine(installRoot, SessionFileName);
 
-    // If you've ever saved it elsewhere previously, keep these as fallbacks.
     private static string[] GetCandidateSessionPaths(string installRoot)
         => new[]
         {
-            // Primary
             GetPrimarySessionPath(installRoot),
-
-            // Common "nested" case if installRoot accidentally included an extra FabriFroge
             Path.Combine(installRoot, "FabriFroge", SessionFileName),
-
-            // Optional auth folder variant (if you used this in an earlier iteration)
             Path.Combine(installRoot, "auth", SessionFileName),
         };
 
-    // DTO so we control JSON shape and stay compatible if MSession changes
+    // ---- Debug helpers ----
+
+    private static bool IsAuthDebugEnabled(string installRoot)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(installRoot)) return false;
+            return File.Exists(Path.Combine(installRoot, AuthDebugToggleFile));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void AppendAuthDebugReport(string installRoot, string text)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(installRoot)) return;
+
+            Directory.CreateDirectory(installRoot);
+            var path = Path.Combine(installRoot, AuthDebugReportFile);
+
+            File.AppendAllText(
+                path,
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {text}{Environment.NewLine}",
+                Encoding.UTF8);
+        }
+        catch
+        {
+            // never let debug logging break auth flow
+        }
+    }
+
+    // ---- DTO (stable json shape) ----
+
     private sealed class SessionDto
     {
         public string? Username { get; set; }
@@ -40,13 +78,13 @@ public static class AuthService
         public string? UserType { get; set; }
     }
 
+    // ---- Session cache (launcher-owned only) ----
+
     public static MSession? TryLoadSession(string installRoot, Action<string> log)
     {
         try
         {
-            var paths = GetCandidateSessionPaths(installRoot);
-
-            foreach (var p in paths)
+            foreach (var p in GetCandidateSessionPaths(installRoot))
             {
                 log($"Auth cache check: {p}");
                 if (!File.Exists(p))
@@ -68,7 +106,6 @@ public static class AuthService
                     continue;
                 }
 
-                // If it's clearly not valid, treat as missing
                 if (string.IsNullOrWhiteSpace(dto.AccessToken) ||
                     string.IsNullOrWhiteSpace(dto.UUID) ||
                     string.IsNullOrWhiteSpace(dto.Username))
@@ -77,14 +114,17 @@ public static class AuthService
                     continue;
                 }
 
-                // Rebuild MSession
                 var session = new MSession
                 {
-                    Username = dto.Username,
-                    UUID = dto.UUID,
-                    AccessToken = dto.AccessToken,
-                    ClientToken = string.IsNullOrWhiteSpace(dto.ClientToken) ? Guid.NewGuid().ToString("N") : dto.ClientToken,
-                    UserType = string.IsNullOrWhiteSpace(dto.UserType) ? "msa" : dto.UserType
+                    Username = dto.Username!,
+                    UUID = dto.UUID!,
+                    AccessToken = dto.AccessToken!,
+                    ClientToken = string.IsNullOrWhiteSpace(dto.ClientToken)
+                        ? Guid.NewGuid().ToString("N")
+                        : dto.ClientToken!,
+                    UserType = string.IsNullOrWhiteSpace(dto.UserType)
+                        ? "msa"
+                        : dto.UserType!
                 };
 
                 log($"Auth cache loaded from: {p} (user={session.Username})");
@@ -105,6 +145,9 @@ public static class AuthService
     {
         try
         {
+            if (string.IsNullOrWhiteSpace(installRoot))
+                throw new ArgumentException("installRoot is empty", nameof(installRoot));
+
             Directory.CreateDirectory(installRoot);
 
             var dto = new SessionDto
@@ -122,7 +165,6 @@ public static class AuthService
             });
 
             var primaryPath = GetPrimarySessionPath(installRoot);
-
             File.WriteAllText(primaryPath, json);
             log($"Saved Microsoft session to: {primaryPath}");
 
@@ -142,6 +184,8 @@ public static class AuthService
 
     public static void ClearSavedSession(string installRoot, Action<string> log)
     {
+        bool any = false;
+
         foreach (var p in GetCandidateSessionPaths(installRoot))
         {
             try
@@ -149,6 +193,7 @@ public static class AuthService
                 if (File.Exists(p))
                 {
                     File.Delete(p);
+                    any = true;
                     log($"Deleted auth cache: {p}");
                 }
             }
@@ -157,6 +202,9 @@ public static class AuthService
                 log($"Failed to delete auth cache {p}: {ex.Message}");
             }
         }
+
+        if (!any)
+            log("Auth cache already clear.");
     }
 
     public static bool HasCachedAccount(string installRoot)
@@ -166,50 +214,302 @@ public static class AuthService
         return false;
     }
 
+    // ---- Sign-in / sign-out flows ----
+
     /// <summary>
-    /// Microsoft sign-in using CmlLib.Core.Auth.Microsoft (JELoginHandler).
-    /// This typically opens a browser/device-code flow.
+    /// Standard sign-in. First tries default cached/silent flow.
+    /// If that fails due to expired/bad cached auth, clears launcher + library auth state
+    /// and retries once with forced interactive login.
     /// </summary>
     public static async Task<MSession> SignInMicrosoftAsync(string installRoot, Action<string> log, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
+        bool debug = IsAuthDebugEnabled(installRoot);
+        if (debug)
+        {
+            log("Auth debug mode ENABLED (enable_auth_debug.txt found).");
+            AppendAuthDebugReport(installRoot, "Auth debug mode ENABLED.");
+        }
+
         try
         {
             log("Starting Microsoft sign-in...");
-
-            // Build the default Java Edition login handler
-            // Docs: JELoginHandlerBuilder.BuildDefault(); await Authenticate(); :contentReference[oaicite:1]{index=1}
-            var loginHandler = JELoginHandlerBuilder.BuildDefault();
-
-            // Authenticate (this may prompt / open browser)
-            var session = await loginHandler.Authenticate().ConfigureAwait(false);
-
-            ct.ThrowIfCancellationRequested();
-
-            if (session == null ||
-                string.IsNullOrWhiteSpace(session.AccessToken) ||
-                string.IsNullOrWhiteSpace(session.UUID) ||
-                string.IsNullOrWhiteSpace(session.Username))
-            {
-                throw new InvalidOperationException("Microsoft sign-in did not return a valid session.");
-            }
-
-            // Save immediately (MainWindow also calls SaveSession, but this is safe and helps if callers forget)
-            SaveSession(installRoot, session, log);
-
-            log($"Microsoft sign-in OK: {session.Username}");
-            return session;
+            return await TrySignInInternalAsync(installRoot, log, ct, debug, allowRecovery: true).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
             log("Microsoft sign-in cancelled.");
+            if (debug) AppendAuthDebugReport(installRoot, "Sign-in cancelled.");
             throw;
         }
         catch (Exception ex)
         {
             log($"Microsoft sign-in failed: {ex}");
+            if (debug)
+            {
+                AppendAuthDebugReport(installRoot, $"Sign-in FAILED: {ex}");
+                await ReachabilityProbeAsync(log, installRoot, ct).ConfigureAwait(false);
+                AppendAuthDebugReport(
+                    installRoot,
+                    "Player checklist: try phone hotspot; change DNS to 1.1.1.1; disable antivirus HTTPS scanning/web shield; disable IPv6 temporarily; reboot router/PC.");
+            }
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Signs out launcher-owned cached session file(s) and library/MSAL auth state.
+    /// </summary>
+    public static async Task SignOutAsync(string installRoot, Action<string> log)
+    {
+        ClearSavedSession(installRoot, log);
+
+        try
+        {
+            var loginHandler = JELoginHandlerBuilder.BuildDefault();
+            await loginHandler.Signout().ConfigureAwait(false);
+            log("Microsoft library signout OK.");
+        }
+        catch (Exception ex)
+        {
+            log($"Microsoft library signout failed (continuing): {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Swap Accounts: signs out cached library auth state and forces interactive login UI.
+    /// </summary>
+    public static async Task<MSession> SwapAccountsAsync(string installRoot, Action<string> log, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        bool debug = IsAuthDebugEnabled(installRoot);
+        if (debug)
+        {
+            log("Auth debug mode ENABLED (enable_auth_debug.txt found).");
+            AppendAuthDebugReport(installRoot, "Auth debug mode ENABLED.");
+            AppendAuthDebugReport(installRoot, "SwapAccounts flow started.");
+        }
+
+        // Clear launcher cache first
+        ClearSavedSession(installRoot, log);
+
+        try
+        {
+            log("Swap Accounts: signing out library auth state...");
+            var loginHandler = JELoginHandlerBuilder.BuildDefault();
+
+            try
+            {
+                await loginHandler.Signout().ConfigureAwait(false);
+                log("Swap Accounts: signout OK.");
+                if (debug) AppendAuthDebugReport(installRoot, "Swap Accounts: loginHandler.Signout() OK.");
+            }
+            catch (Exception ex)
+            {
+                log($"Swap Accounts: signout failed (continuing): {ex.Message}");
+                if (debug) AppendAuthDebugReport(installRoot, $"Swap Accounts: Signout failed: {ex}");
+            }
+
+            ct.ThrowIfCancellationRequested();
+
+            log("Swap Accounts: starting INTERACTIVE sign-in...");
+            var session = await loginHandler.AuthenticateInteractively().ConfigureAwait(false);
+
+            ct.ThrowIfCancellationRequested();
+            ValidateSessionOrThrow(session);
+
+            log($"Swap Accounts: sign-in OK: {session.Username} ({session.UUID})");
+            if (debug) AppendAuthDebugReport(installRoot, $"Swap Accounts: sign-in OK: {session.Username} ({session.UUID})");
+
+            if (debug)
+                await AuthProbeMinecraftProfileAsync(session.AccessToken!, log, installRoot, ct).ConfigureAwait(false);
+
+            SaveSession(installRoot, session, log);
+            return session;
+        }
+        catch (Exception ex)
+        {
+            log($"Swap Accounts failed: {ex}");
+            if (debug)
+            {
+                AppendAuthDebugReport(installRoot, $"Swap Accounts FAILED: {ex}");
+                await ReachabilityProbeAsync(log, installRoot, ct).ConfigureAwait(false);
+            }
+            throw;
+        }
+    }
+
+    private static async Task<MSession> TrySignInInternalAsync(
+        string installRoot,
+        Action<string> log,
+        CancellationToken ct,
+        bool debug,
+        bool allowRecovery)
+    {
+        var loginHandler = JELoginHandlerBuilder.BuildDefault();
+
+        try
+        {
+            log("Microsoft sign-in: attempting default auth flow...");
+            var session = await loginHandler.Authenticate().ConfigureAwait(false);
+
+            ct.ThrowIfCancellationRequested();
+            ValidateSessionOrThrow(session);
+
+            log($"Microsoft sign-in OK: {session.Username} ({session.UUID})");
+            if (debug) AppendAuthDebugReport(installRoot, $"Sign-in OK: {session.Username} ({session.UUID})");
+
+            if (debug)
+                await AuthProbeMinecraftProfileAsync(session.AccessToken!, log, installRoot, ct).ConfigureAwait(false);
+
+            SaveSession(installRoot, session, log);
+            return session;
+        }
+        catch (Exception ex) when (allowRecovery && IsRecoverableAuthExpiry(ex))
+        {
+            log("Microsoft sign-in: cached auth appears expired/bad. Clearing saved auth and retrying with interactive sign-in...");
+            if (debug) AppendAuthDebugReport(installRoot, $"Recoverable auth expiry detected: {ex}");
+
+            await ResetLibraryAndLauncherAuthStateAsync(installRoot, log, debug).ConfigureAwait(false);
+
+            ct.ThrowIfCancellationRequested();
+
+            log("Microsoft sign-in: starting forced interactive sign-in...");
+            var retryHandler = JELoginHandlerBuilder.BuildDefault();
+            var retrySession = await retryHandler.AuthenticateInteractively().ConfigureAwait(false);
+
+            ct.ThrowIfCancellationRequested();
+            ValidateSessionOrThrow(retrySession);
+
+            log($"Microsoft sign-in recovery OK: {retrySession.Username} ({retrySession.UUID})");
+            if (debug) AppendAuthDebugReport(installRoot, $"Recovery sign-in OK: {retrySession.Username} ({retrySession.UUID})");
+
+            if (debug)
+                await AuthProbeMinecraftProfileAsync(retrySession.AccessToken!, log, installRoot, ct).ConfigureAwait(false);
+
+            SaveSession(installRoot, retrySession, log);
+            return retrySession;
+        }
+    }
+
+    private static async Task ResetLibraryAndLauncherAuthStateAsync(
+        string installRoot,
+        Action<string> log,
+        bool debug)
+    {
+        ClearSavedSession(installRoot, log);
+
+        try
+        {
+            var loginHandler = JELoginHandlerBuilder.BuildDefault();
+            await loginHandler.Signout().ConfigureAwait(false);
+            log("Auth recovery: library signout OK.");
+            if (debug) AppendAuthDebugReport(installRoot, "Auth recovery: library signout OK.");
+        }
+        catch (Exception ex)
+        {
+            log($"Auth recovery: library signout failed (continuing): {ex.Message}");
+            if (debug) AppendAuthDebugReport(installRoot, $"Auth recovery: library signout failed: {ex}");
+        }
+    }
+
+    private static bool IsRecoverableAuthExpiry(Exception ex)
+    {
+        var text = ex.ToString();
+
+        return text.Contains("token_expired", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("XASU error=token_expired", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Interactive Microsoft authentication is required", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Cached RefreshToken", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("expired", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void ValidateSessionOrThrow(MSession? session)
+    {
+        if (session == null ||
+            string.IsNullOrWhiteSpace(session.AccessToken) ||
+            string.IsNullOrWhiteSpace(session.UUID) ||
+            string.IsNullOrWhiteSpace(session.Username))
+        {
+            throw new InvalidOperationException("Microsoft sign-in did not return a valid session.");
+        }
+    }
+
+    // ---- Debug-only probes ----
+
+    private static async Task AuthProbeMinecraftProfileAsync(string accessToken, Action<string> log, string installRoot, CancellationToken ct)
+    {
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("FabriFrogeLauncher/AuthDebug");
+
+            var req = new HttpRequestMessage(HttpMethod.Get, "https://api.minecraftservices.com/minecraft/profile");
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+            using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
+            var line = $"Auth probe: GET /minecraft/profile => {(int)resp.StatusCode} {resp.ReasonPhrase}";
+            log(line);
+            AppendAuthDebugReport(installRoot, line);
+
+            string body = "";
+            try { body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+
+            if (!string.IsNullOrWhiteSpace(body))
+            {
+                var snippet = body.Length > 300 ? body.Substring(0, 300) : body;
+                AppendAuthDebugReport(installRoot, $"Auth probe body (first 300): {snippet}");
+            }
+        }
+        catch (Exception ex)
+        {
+            var line = $"Auth probe exception: {ex.Message}";
+            log(line);
+            AppendAuthDebugReport(installRoot, line);
+        }
+    }
+
+    private static async Task ReachabilityProbeAsync(Action<string> log, string installRoot, CancellationToken ct)
+    {
+        var urls = new[]
+        {
+            "https://api.minecraftservices.com/",
+            "https://api.minecraftservices.com/minecraft/profile",
+            "https://user.auth.xboxlive.com/",
+            "https://xsts.auth.xboxlive.com/"
+        };
+
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(12) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("FabriFrogeLauncher/AuthDebug");
+
+            foreach (var url in urls)
+            {
+                try
+                {
+                    using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                    using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+
+                    var line = $"Reachability probe: {url} => {(int)resp.StatusCode} {resp.ReasonPhrase}";
+                    log(line);
+                    AppendAuthDebugReport(installRoot, line);
+                }
+                catch (Exception ex)
+                {
+                    var line = $"Reachability probe FAILED: {url} => {ex.Message}";
+                    log(line);
+                    AppendAuthDebugReport(installRoot, line);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            var line = $"Reachability probe exception: {ex.Message}";
+            log(line);
+            AppendAuthDebugReport(installRoot, line);
         }
     }
 }

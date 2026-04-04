@@ -7,21 +7,25 @@ namespace FabriFrogeLauncher;
 public sealed class LauncherSettings
 {
     public int RamMb { get; set; } = 8192;
+    public string? InstallDirectory { get; set; }
 
     private const string FileName = "launcher_settings.json";
 
-    public static string GetSettingsPath(string installRoot)
+    public static string GetSettingsPath()
     {
-        // store alongside your install root so each install has its own settings
-        Directory.CreateDirectory(installRoot);
-        return Path.Combine(installRoot, FileName);
+        var appData = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "FabriFroge");
+
+        Directory.CreateDirectory(appData);
+        return Path.Combine(appData, FileName);
     }
 
-    public static LauncherSettings Load(string installRoot, Action<string>? log = null)
+    public static LauncherSettings Load(Action<string>? log = null)
     {
         try
         {
-            var path = GetSettingsPath(installRoot);
+            var path = GetSettingsPath();
             if (!File.Exists(path))
                 return new LauncherSettings();
 
@@ -36,11 +40,11 @@ public sealed class LauncherSettings
         }
     }
 
-    public void Save(string installRoot, Action<string>? log = null)
+    public void Save(Action<string>? log = null)
     {
         try
         {
-            var path = GetSettingsPath(installRoot);
+            var path = GetSettingsPath();
             var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(path, json);
         }
@@ -48,5 +52,13 @@ public sealed class LauncherSettings
         {
             log?.Invoke($"Settings save failed: {ex.Message}");
         }
+    }
+
+    public string GetResolvedInstallDirectory(string defaultInstallRoot)
+    {
+        if (!string.IsNullOrWhiteSpace(InstallDirectory))
+            return InstallDirectory;
+
+        return defaultInstallRoot;
     }
 }

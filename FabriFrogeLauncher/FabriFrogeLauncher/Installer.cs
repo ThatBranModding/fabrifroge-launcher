@@ -39,6 +39,23 @@ public static class Installer
 {
     private const int MaxParallelDownloads = 6;
 
+    // Files that should NEVER be managed by the pack once created (player-owned settings)
+    // Paths are relative to instanceRoot and use manifest-style slashes.
+    private static readonly HashSet<string> PreservePaths = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".minecraft/options.txt",
+        ".minecraft/optionsof.txt",
+        ".minecraft/optionsshaders.txt",
+    };
+
+    private static bool IsPreserved(string manifestPath)
+    {
+        if (string.IsNullOrWhiteSpace(manifestPath)) return false;
+        // Normalize to forward slashes like your manifest uses
+        var p = manifestPath.Replace('\\', '/').TrimStart('/');
+        return PreservePaths.Contains(p);
+    }
+
     public static string GetPackRoot(string installRoot, string packId)
         => Path.Combine(installRoot, "FabriFroge", "packs", packId);
 
@@ -92,6 +109,7 @@ public static class Installer
         var indexPath = GetIndexPath(packRoot);
         var index = LoadIndex(indexPath, manifest.PackId);
 
+        // IMPORTANT: do not remove preserved files even if manifest says so
         ApplyRemoveList(GetRemoveEntries(manifest), instanceRoot, index, log);
 
         var work = new List<ManifestFile>();
@@ -100,11 +118,36 @@ public static class Installer
         {
             ct.ThrowIfCancellationRequested();
 
-            var target = Path.Combine(instanceRoot, f.Path.Replace('/', Path.DirectorySeparatorChar));
+            var normalizedPath = (f.Path ?? "").Replace('\\', '/').TrimStart('/');
+            var target = Path.Combine(instanceRoot, normalizedPath.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
 
+            // If this is a preserved file and it already exists, we NEVER overwrite it.
+            // We also avoid re-downloading it on repair/update.
+            if (IsPreserved(normalizedPath) && File.Exists(target))
+            {
+                // Keep the index entry aligned to what is actually on disk (so later runs don’t keep “wanting” it).
+                try
+                {
+                    var existingHash = await Sha256HexOfFileAsync(target, ct);
+                    var size = new FileInfo(target).Length;
+                    index.Files[normalizedPath] = new FileIndexEntry { Sha256 = existingHash, Size = size };
+                }
+                catch
+                {
+                    // ignore; still preserve the file
+                }
+
+                Interlocked.Increment(ref filesDone);
+                // Don’t count bytes here as “downloaded”; but progress should still reach 100,
+                // so we add the manifest size as a progress approximation.
+                Interlocked.Add(ref bytesDone, f.Size);
+                PushProgress();
+                continue;
+            }
+
             // Fast path (no hashing) if NOT full verify
-            if (!fullVerify && index.Files.TryGetValue(f.Path, out var idx))
+            if (!fullVerify && index.Files.TryGetValue(normalizedPath, out var idx))
             {
                 if (string.Equals(idx.Sha256, f.Sha256, StringComparison.OrdinalIgnoreCase) &&
                     idx.Size == f.Size &&
@@ -123,7 +166,7 @@ public static class Installer
                 var existingHash = await Sha256HexOfFileAsync(target, ct);
                 if (string.Equals(existingHash, f.Sha256, StringComparison.OrdinalIgnoreCase))
                 {
-                    index.Files[f.Path] = new FileIndexEntry { Sha256 = f.Sha256, Size = f.Size };
+                    index.Files[normalizedPath] = new FileIndexEntry { Sha256 = f.Sha256, Size = f.Size };
 
                     Interlocked.Increment(ref filesDone);
                     Interlocked.Add(ref bytesDone, f.Size);
@@ -135,7 +178,6 @@ public static class Installer
             work.Add(f);
         }
 
-        // If nothing to do, still persist metadata so UI can show installed/latest correctly.
         if (work.Count == 0)
         {
             WriteVersionMarker(packRoot, manifest.Version);
@@ -156,7 +198,7 @@ public static class Installer
                 ? $"Repair complete (all files verified): {manifest.PackId} {manifest.Version}"
                 : $"Install complete (already up to date): {manifest.PackId} {manifest.Version}");
 
-            return false; // changed = false (up to date)
+            return false;
         }
 
         log($"{(fullVerify ? "Repairing" : "Updating")} {work.Count}/{manifest.Files.Count} files (parallel={MaxParallelDownloads})...");
@@ -175,8 +217,17 @@ public static class Installer
                 {
                     ct.ThrowIfCancellationRequested();
 
-                    var target = Path.Combine(instanceRoot, f.Path.Replace('/', Path.DirectorySeparatorChar));
+                    var normalizedPath = (f.Path ?? "").Replace('\\', '/').TrimStart('/');
+                    var target = Path.Combine(instanceRoot, normalizedPath.Replace('/', Path.DirectorySeparatorChar));
                     Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+
+                    // Double-safety: never overwrite preserved files if they exist
+                    if (IsPreserved(normalizedPath) && File.Exists(target))
+                    {
+                        Interlocked.Increment(ref filesDone);
+                        PushProgress();
+                        return;
+                    }
 
                     var tmp = target + ".tmp";
                     if (File.Exists(tmp)) File.Delete(tmp);
@@ -192,13 +243,13 @@ public static class Installer
                             PushProgress();
                         },
                         ct,
-                        f.Path);
+                        normalizedPath);
 
                     var downloadedHash = await Sha256HexOfFileAsync(tmp, ct);
                     if (!string.Equals(downloadedHash, f.Sha256, StringComparison.OrdinalIgnoreCase))
                     {
-                        try { File.Delete(tmp); } catch { /* ignore */ }
-                        throw new Exception($"SHA256 mismatch for {f.Path}");
+                        try { File.Delete(tmp); } catch { }
+                        throw new Exception($"SHA256 mismatch for {normalizedPath}");
                     }
 
                     if (File.Exists(target)) File.Delete(target);
@@ -206,7 +257,7 @@ public static class Installer
 
                     lock (index)
                     {
-                        index.Files[f.Path] = new FileIndexEntry { Sha256 = f.Sha256, Size = f.Size };
+                        index.Files[normalizedPath] = new FileIndexEntry { Sha256 = f.Sha256, Size = f.Size };
                     }
 
                     Interlocked.Increment(ref filesDone);
@@ -239,7 +290,7 @@ public static class Installer
         }
 
         log($"Install complete: {manifest.PackId} {manifest.Version}");
-        return true; // changed = true (downloaded/replaced something)
+        return true;
     }
 
     private static void SaveLastManifest(string packRoot, PackManifest manifest)
@@ -281,7 +332,7 @@ public static class Installer
             if (field?.GetValue(manifest) is IEnumerable<string> flist)
                 return flist.ToList();
         }
-        catch { /* ignore */ }
+        catch { }
 
         return Array.Empty<string>();
     }
@@ -295,19 +346,24 @@ public static class Installer
         {
             try
             {
-                var target = Path.Combine(instanceRoot, rel.Replace('/', Path.DirectorySeparatorChar));
+                var normalized = (rel ?? "").Replace('\\', '/').TrimStart('/');
+                // Never remove preserved files
+                if (IsPreserved(normalized))
+                    continue;
+
+                var target = Path.Combine(instanceRoot, normalized.Replace('/', Path.DirectorySeparatorChar));
                 if (File.Exists(target))
                 {
                     File.Delete(target);
-                    log($"Removed: {rel}");
+                    log($"Removed: {normalized}");
                 }
+
+                index.Files.Remove(normalized);
             }
             catch
             {
                 // ignore
             }
-
-            index.Files.Remove(rel);
         }
     }
 
