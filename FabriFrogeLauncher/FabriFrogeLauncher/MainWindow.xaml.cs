@@ -208,7 +208,7 @@ public partial class MainWindow : Window
     // -------------------------
     private void WikiButton_Click(object sender, RoutedEventArgs e)
     {
-        const string wikiUrl = "https://wiki.fabrifroge.com/home";
+        const string wikiUrl = "https://wiki.fabrifroge.com/";
 
         try
         {
@@ -686,7 +686,7 @@ public partial class MainWindow : Window
             Progress.Value = 100;
             ProgressText.Text = "Update available";
 
-            await Dispatcher.InvokeAsync(async () =>
+            _ = Dispatcher.InvokeAsync(async () =>
             {
                 if (IsLauncherUpdateRunning) return;
 
@@ -1126,6 +1126,10 @@ public partial class MainWindow : Window
             int ramToUse = _settings?.RamMb > 0 ? _settings.RamMb : DefaultRamMb;
             ApplyRamToUi(ramToUse);
 
+            Progress.IsIndeterminate = false;
+            Progress.Value = 100;
+            ProgressText.Text = "Running";
+
             await GameEngine.LaunchAsync(
                 http,
                 installRoot,
@@ -1138,7 +1142,7 @@ public partial class MainWindow : Window
 
             Progress.IsIndeterminate = false;
             Progress.Value = 100;
-            ProgressText.Text = "Running";
+            ProgressText.Text = "Ready";
         }
         catch (Exception ex)
         {

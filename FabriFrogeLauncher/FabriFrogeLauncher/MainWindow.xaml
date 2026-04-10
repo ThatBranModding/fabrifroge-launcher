@@ -14,7 +14,6 @@
 
     <Window.Resources>
 
-        <!-- Rounded dark card -->
         <Style x:Key="CardBorderStyle" TargetType="Border">
             <Setter Property="CornerRadius" Value="16"/>
             <Setter Property="Background" Value="#B0121620"/>
@@ -24,7 +23,6 @@
             <Setter Property="SnapsToDevicePixels" Value="True"/>
         </Style>
 
-        <!-- Modern rounded button -->
         <Style x:Key="ModernButtonStyle" TargetType="Button">
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="Background" Value="#CC1F2937"/>
@@ -68,13 +66,11 @@
             </Setter>
         </Style>
 
-        <!-- Text style on dark -->
         <Style x:Key="MutedText" TargetType="TextBlock">
             <Setter Property="Foreground" Value="#CCFFFFFF"/>
             <Setter Property="FontSize" Value="12"/>
         </Style>
 
-        <!-- Slim pill action button -->
         <Style x:Key="PillActionButtonStyle" TargetType="Button">
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="Background" Value="#1EFFFFFF"/>
@@ -118,7 +114,6 @@
             </Setter>
         </Style>
 
-        <!-- ComboBox: BLACK text on WHITE background (dropdown + selection) -->
         <Style x:Key="DarkComboBoxStyle" TargetType="ComboBox">
             <Setter Property="Foreground" Value="#FF000000"/>
             <Setter Property="Background" Value="#FFFFFFFF"/>
@@ -130,7 +125,6 @@
             <Setter Property="SnapsToDevicePixels" Value="True"/>
         </Style>
 
-        <!-- ComboBox items: BLACK on WHITE -->
         <Style TargetType="ComboBoxItem">
             <Setter Property="Foreground" Value="#FF000000"/>
             <Setter Property="Background" Value="#FFFFFFFF"/>
@@ -145,7 +139,6 @@
             </Style.Triggers>
         </Style>
 
-        <!-- NO hover/press chrome (for play pill inner clickable areas) -->
         <Style x:Key="NoChromeButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
@@ -165,7 +158,6 @@
             </Setter>
         </Style>
 
-        <!-- NO hover/press chrome (for play menu ToggleButton) -->
         <Style x:Key="NoChromeToggle" TargetType="ToggleButton">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
@@ -187,7 +179,6 @@
 
     </Window.Resources>
 
-    <!-- Rounded window shell -->
     <Border CornerRadius="20"
             Background="#FF0F1014"
             BorderBrush="#33FFFFFF"
@@ -197,12 +188,10 @@
 
         <Grid>
 
-            <!-- Background WebP frame target -->
             <Image x:Name="BgAnim"
                    Stretch="UniformToFill"
                    SnapsToDevicePixels="True"/>
 
-            <!-- Top Titlebar (draggable) -->
             <Grid Height="44"
                   VerticalAlignment="Top"
                   Background="#22000000"
@@ -243,14 +232,12 @@
                 </StackPanel>
             </Grid>
 
-            <!-- Overlay layout -->
             <Grid Margin="0,44,0,0" SnapsToDevicePixels="True" UseLayoutRounding="True">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="360"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Left Sidebar -->
                 <Border Grid.Column="0"
                         Style="{StaticResource CardBorderStyle}"
                         Margin="14">
@@ -265,7 +252,6 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <!-- Header -->
                         <StackPanel Grid.Row="0" Margin="0,0,0,8">
                             <TextBlock Text="FabriFroge Launcher"
                                        Foreground="White"
@@ -276,7 +262,6 @@
                                        FontSize="12"/>
                         </StackPanel>
 
-                        <!-- Install folder -->
                         <Border Grid.Row="1"
                                 CornerRadius="12"
                                 Background="#66111827"
@@ -315,16 +300,13 @@
                             </Grid>
                         </Border>
 
-                        <!-- ONLY showing the changed section to avoid breaking anything else -->
-
-                        <!-- Account row -->
                         <Border Grid.Row="2"
-        CornerRadius="12"
-        Background="#66111827"
-        BorderBrush="#33FFFFFF"
-        BorderThickness="1"
-        Padding="10"
-        Margin="0,0,0,8">
+                                CornerRadius="12"
+                                Background="#66111827"
+                                BorderBrush="#33FFFFFF"
+                                BorderThickness="1"
+                                Padding="10"
+                                Margin="0,0,0,8">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -336,7 +318,6 @@
                                     <TextBlock x:Name="SignedInAsText" Foreground="White" FontSize="12"/>
                                 </StackPanel>
 
-                                <!-- ✅ UPDATED BUTTON ROW (3 buttons) -->
                                 <Grid Grid.Row="1" Margin="0,8,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -347,27 +328,26 @@
                                     </Grid.ColumnDefinitions>
 
                                     <Button x:Name="SignInButton"
-                    Grid.Column="0"
-                    Content="Sign In"
-                    Style="{StaticResource PillActionButtonStyle}"
-                    Click="SignInButton_Click"/>
+                                            Grid.Column="0"
+                                            Content="Sign In (Microsoft)"
+                                            Style="{StaticResource PillActionButtonStyle}"
+                                            Click="SignInButton_Click"/>
 
                                     <Button x:Name="SignOutButton"
-                    Grid.Column="2"
-                    Content="Sign Out"
-                    Style="{StaticResource PillActionButtonStyle}"
-                    Click="SignOutButton_Click"/>
+                                            Grid.Column="2"
+                                            Content="Sign Out"
+                                            Style="{StaticResource PillActionButtonStyle}"
+                                            Click="SignOutButton_Click"/>
 
                                     <Button x:Name="WikiButton"
-                    Grid.Column="4"
-                    Content="Wiki"
-                    Style="{StaticResource PillActionButtonStyle}"
-                    Click="WikiButton_Click"/>
+                                            Grid.Column="4"
+                                            Content="Wiki"
+                                            Style="{StaticResource PillActionButtonStyle}"
+                                            Click="WikiButton_Click"/>
                                 </Grid>
                             </Grid>
                         </Border>
 
-                        <!-- Version + progress -->
                         <Border Grid.Row="3"
                                 CornerRadius="12"
                                 Background="#66111827"
@@ -425,10 +405,8 @@
                             </Grid>
                         </Border>
 
-                        <!-- Spacer row -->
                         <Border Grid.Row="4" Background="Transparent"/>
 
-                        <!-- Bottom actions -->
                         <Border Grid.Row="5"
                                 Margin="0,10,0,0"
                                 CornerRadius="18"
@@ -444,10 +422,8 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
-                                <!-- Play pill -->
                                 <Border x:Name="PlayPill"
                                         Grid.Row="0"
                                         Height="56"
@@ -466,7 +442,6 @@
                                             <ColumnDefinition Width="48"/>
                                         </Grid.ColumnDefinitions>
 
-                                        <!-- Left circle -->
                                         <Border Grid.Column="0"
                                                 Width="36"
                                                 Height="36"
@@ -490,7 +465,6 @@
                                             </Button>
                                         </Border>
 
-                                        <!-- Center label -->
                                         <Button x:Name="PlayButton"
                                                 Grid.Column="1"
                                                 Style="{StaticResource NoChromeButton}"
@@ -504,7 +478,6 @@
                                                        FontWeight="SemiBold"/>
                                         </Button>
 
-                                        <!-- RIGHT BUTTON -->
                                         <Border Grid.Column="2"
                                                 Width="36"
                                                 Height="36"
@@ -539,7 +512,6 @@
                                     </Grid>
                                 </Border>
 
-                                <!-- Popup menu -->
                                 <Popup x:Name="PlayMenuPopup"
                                        PlacementTarget="{Binding ElementName=PlayPill}"
                                        Placement="Top"
@@ -570,16 +542,19 @@
                                                     Style="{StaticResource PillActionButtonStyle}"
                                                     Margin="0,0,0,8"
                                                     Click="RepairButton_Click"/>
-
                                             <Button x:Name="SwapAccountsButton"
                                                     Content="Swap Accounts"
                                                     Style="{StaticResource PillActionButtonStyle}"
+                                                    Margin="0,0,0,8"
                                                     Click="SwapAccountsButton_Click"/>
+                                            <Button x:Name="ToggleConsoleButton"
+                                                    Content="Show Console"
+                                                    Style="{StaticResource PillActionButtonStyle}"
+                                                    Click="ToggleConsoleButton_Click"/>
                                         </StackPanel>
                                     </Border>
                                 </Popup>
 
-                                <!-- Status text -->
                                 <Grid Grid.Row="1" Margin="0,8,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -602,7 +577,6 @@
                                                VerticalAlignment="Center"/>
                                 </Grid>
 
-                                <!-- RAM selector -->
                                 <Grid Grid.Row="2" Margin="0,8,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
@@ -623,7 +597,6 @@
                                               SelectionChanged="RamComboBox_SelectionChanged"/>
                                 </Grid>
 
-                                <!-- RAM requirements -->
                                 <StackPanel Grid.Row="3" Margin="0,8,0,0">
                                     <TextBlock Text="Minimum: 5 GB RAM"
                                                Foreground="#CCFFFFFF"
@@ -633,24 +606,14 @@
                                                FontSize="12"
                                                Margin="0,2,0,0"/>
                                 </StackPanel>
-
-                                <!-- Console button -->
-                                <Button x:Name="ToggleConsoleButton"
-                                        Grid.Row="4"
-                                        Margin="0,10,0,0"
-                                        Content="Show Console"
-                                        Style="{StaticResource PillActionButtonStyle}"
-                                        Click="ToggleConsoleButton_Click"/>
                             </Grid>
                         </Border>
 
                     </Grid>
                 </Border>
 
-                <!-- Right side -->
                 <Grid Grid.Column="1"/>
 
-                <!-- Console Drawer -->
                 <Border x:Name="ConsoleDrawer"
                         Grid.ColumnSpan="2"
                         HorizontalAlignment="Right"

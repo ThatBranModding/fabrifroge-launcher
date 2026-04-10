@@ -47,17 +47,14 @@ public static class GameEngine
     /// </summary>
     private static List<string> BuildDefaultJvmArgs(int ramMb)
     {
-        // Clamp to sane bounds
         int xmx = Math.Clamp(ramMb, 2048, 65536);
         int xms = Math.Clamp(xmx / 2, 1024, xmx);
 
         return new List<string>
         {
-            // Memory
             $"-Xms{xms}M",
             $"-Xmx{xmx}M",
 
-            // GC / performance defaults
             "-XX:+UseG1GC",
             "-XX:+ParallelRefProcEnabled",
             "-XX:MaxGCPauseMillis=200",
@@ -71,7 +68,6 @@ public static class GameEngine
             "-XX:G1ReservePercent=20",
             "-XX:InitiatingHeapOccupancyPercent=15",
 
-            // Mostly harmless QoL / stability
             "-Dsun.rmi.dgc.server.gcInterval=2147483646",
             "-Dsun.rmi.dgc.client.gcInterval=2147483646",
             "-Dfile.encoding=UTF-8"
@@ -93,7 +89,6 @@ public static class GameEngine
 
         var original = proc.StartInfo.Arguments ?? "";
 
-        // Most Minecraft launches include "-cp" (or "-classpath")
         int cpIndex = IndexOfToken(original, " -cp ");
         if (cpIndex < 0)
             cpIndex = IndexOfToken(original, " -classpath ");
@@ -101,23 +96,78 @@ public static class GameEngine
         string updated;
         if (cpIndex >= 0)
         {
-            // Insert right before -cp
             updated = original.Insert(cpIndex, " " + argsToAdd);
         }
         else
         {
-            // Fallback: prepend after any initial whitespace
             updated = argsToAdd + " " + original;
         }
 
         proc.StartInfo.Arguments = updated;
-
         log("Injected JVM args into java command line (before -cp).");
     }
 
     private static int IndexOfToken(string haystack, string token)
     {
         return haystack.IndexOf(token, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void ConfigureConsole(Process proc, Action<string> log)
+    {
+        if (proc?.StartInfo == null)
+            return;
+
+        proc.StartInfo.UseShellExecute = false;
+        proc.StartInfo.CreateNoWindow = true;
+        proc.StartInfo.RedirectStandardOutput = true;
+        proc.StartInfo.RedirectStandardError = true;
+
+        proc.OutputDataReceived += (_, e) =>
+        {
+            if (!string.IsNullOrWhiteSpace(e.Data))
+                log(e.Data);
+        };
+
+        proc.ErrorDataReceived += (_, e) =>
+        {
+            if (!string.IsNullOrWhiteSpace(e.Data))
+                log("[ERR] " + e.Data);
+        };
+
+        proc.EnableRaisingEvents = true;
+    }
+
+    private static Task WaitForExitAsync(Process proc, CancellationToken ct)
+    {
+        if (proc.HasExited)
+            return Task.CompletedTask;
+
+        var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void OnExit(object? sender, EventArgs e)
+        {
+            proc.Exited -= OnExit;
+            tcs.TrySetResult(null);
+        }
+
+        proc.Exited += OnExit;
+
+        if (ct.CanBeCanceled)
+        {
+            ct.Register(() =>
+            {
+                proc.Exited -= OnExit;
+                tcs.TrySetCanceled(ct);
+            });
+        }
+
+        if (proc.HasExited)
+        {
+            proc.Exited -= OnExit;
+            return Task.CompletedTask;
+        }
+
+        return tcs.Task;
     }
 
     public static async Task LaunchAsync(
@@ -135,7 +185,10 @@ public static class GameEngine
         Directory.CreateDirectory(mcDir);
 
         var (javaExe, javawExe) = ResolveJava(installRoot);
-        log($"Using Java: {javaExe}");
+
+        // Use java.exe for redirected output capture.
+        log($"Using Java for launch: {javaExe}");
+        log($"javaw.exe also found at: {javawExe}");
 
         // Ensure NeoForge installed into THIS instance’s .minecraft
         if (manifest.Loader?.Type?.Equals("neoforge", StringComparison.OrdinalIgnoreCase) == true)
@@ -163,7 +216,6 @@ public static class GameEngine
 
         var session = sessionOrNull ?? MSession.CreateOfflineSession(offlineUsernameFallback);
 
-        // Build JVM args (includes Xms/Xmx)
         var jvmArgs = BuildDefaultJvmArgs(ramMb);
 
         log($"RAM selected: {ramMb} MB");
@@ -171,20 +223,34 @@ public static class GameEngine
         foreach (var a in jvmArgs)
             log($"  {a}");
 
-        // IMPORTANT: Use javaw for no console window
         var opt = new MLaunchOption
         {
             Session = session,
             MaximumRamMb = ramMb,
-            JavaPath = javawExe
+            JavaPath = javaExe
         };
 
+        // IMPORTANT: build the actual loader version, not plain vanilla
         var proc = await launcher.BuildProcessAsync(versionId, opt);
 
-        // Inject our JVM args into the final command line (since your CmlLib lacks JVMArguments)
         InjectJvmArgs(proc, jvmArgs, log);
+        ConfigureConsole(proc, log);
 
         log("Starting Minecraft...");
         proc.Start();
+
+        try
+        {
+            proc.BeginOutputReadLine();
+            proc.BeginErrorReadLine();
+            log("Attached launcher console to Minecraft stdout/stderr.");
+        }
+        catch (Exception ex)
+        {
+            log($"Failed to begin output capture: {ex}");
+        }
+
+        await WaitForExitAsync(proc, ct);
+        log("Minecraft process has closed.");
     }
 }
