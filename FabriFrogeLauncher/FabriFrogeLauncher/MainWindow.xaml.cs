@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -200,6 +201,34 @@ public partial class MainWindow : Window
     {
         if (PlayMenuPopup == null) return;
         PlayMenuPopup.IsOpen = !PlayMenuPopup.IsOpen;
+    }
+
+    // -------------------------
+    // Wiki button
+    // -------------------------
+    private void WikiButton_Click(object sender, RoutedEventArgs e)
+    {
+        const string wikiUrl = "https://wiki.fabrifroge.com/home";
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = wikiUrl,
+                UseShellExecute = true
+            });
+
+            Log($"Opened wiki: {wikiUrl}");
+        }
+        catch (Exception ex)
+        {
+            Log($"Failed to open wiki: {ex}");
+            System.Windows.MessageBox.Show(
+                $"Could not open the wiki.\n\n{wikiUrl}",
+                "FabriFroge Launcher",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
     }
 
     // -------------------------
@@ -825,6 +854,9 @@ public partial class MainWindow : Window
 
         SignInButton.IsEnabled = enabled;
         SignOutButton.IsEnabled = enabled;
+
+        if (WikiButton != null)
+            WikiButton.IsEnabled = enabled;
 
         ToggleConsoleButton.IsEnabled = true;
         PlayMenuButton.IsEnabled = true;

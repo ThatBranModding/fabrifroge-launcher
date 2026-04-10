@@ -3,6 +3,10 @@
   "WorkspaceRootPath": "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{D42B6936-90D0-4D1F-81B8-BD2F953DFE96}|FabriFrogeLauncher\\FabriFrogeLauncher.csproj|c:\\users\\branj\\documents\\github\\fabrifroge-launcher\\fabrifrogelauncher\\fabrifrogelauncher\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
+      "RelativeMoniker": "D:0:0:{D42B6936-90D0-4D1F-81B8-BD2F953DFE96}|FabriFrogeLauncher\\FabriFrogeLauncher.csproj|solutionrelative:fabrifrogelauncher\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{D42B6936-90D0-4D1F-81B8-BD2F953DFE96}|FabriFrogeLauncher\\FabriFrogeLauncher.csproj|c:\\users\\branj\\documents\\github\\fabrifroge-launcher\\fabrifrogelauncher\\fabrifrogelauncher\\mainwindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{D42B6936-90D0-4D1F-81B8-BD2F953DFE96}|FabriFrogeLauncher\\FabriFrogeLauncher.csproj|solutionrelative:fabrifrogelauncher\\mainwindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
@@ -61,11 +65,23 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 4,
+          "SelectedChildIndex": 0,
           "Children": [
             {
               "$type": "Document",
-              "DocumentIndex": 5,
+              "DocumentIndex": 0,
+              "Title": "MainWindow.xaml",
+              "DocumentMoniker": "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\FabriFrogeLauncher\\MainWindow.xaml",
+              "RelativeDocumentMoniker": "FabriFrogeLauncher\\MainWindow.xaml",
+              "ToolTip": "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\FabriFrogeLauncher\\MainWindow.xaml*",
+              "RelativeToolTip": "FabriFrogeLauncher\\MainWindow.xaml*",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
+              "WhenOpened": "2026-04-10T01:45:14.398Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
               "Title": "ManifestModels.cs",
               "DocumentMoniker": "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\FabriFrogeLauncher\\ManifestModels.cs",
               "RelativeDocumentMoniker": "FabriFrogeLauncher\\ManifestModels.cs",
@@ -77,7 +93,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
+              "DocumentIndex": 4,
               "Title": "JavaRuntime.cs",
               "DocumentMoniker": "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\FabriFrogeLauncher\\JavaRuntime.cs",
               "RelativeDocumentMoniker": "FabriFrogeLauncher\\JavaRuntime.cs",
@@ -89,7 +105,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 4,
+              "DocumentIndex": 5,
               "Title": "LauncherSettings.cs",
               "DocumentMoniker": "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\FabriFrogeLauncher\\LauncherSettings.cs",
               "RelativeDocumentMoniker": "FabriFrogeLauncher\\LauncherSettings.cs",
@@ -101,7 +117,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 6,
+              "DocumentIndex": 7,
               "Title": "Installer.cs",
               "DocumentMoniker": "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\FabriFrogeLauncher\\Installer.cs",
               "RelativeDocumentMoniker": "FabriFrogeLauncher\\Installer.cs",
@@ -113,20 +129,20 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 1,
               "Title": "MainWindow.xaml.cs",
               "DocumentMoniker": "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\FabriFrogeLauncher\\MainWindow.xaml.cs",
               "RelativeDocumentMoniker": "FabriFrogeLauncher\\MainWindow.xaml.cs",
               "ToolTip": "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\FabriFrogeLauncher\\MainWindow.xaml.cs",
               "RelativeToolTip": "FabriFrogeLauncher\\MainWindow.xaml.cs",
-              "ViewState": "AgIAAEkEAAAAAAAAAAAgwFIEAAAtAAAAAAAAAA==",
+              "ViewState": "AgIAAL8AAAAAAAAAAAAiwMsAAAAFAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-02-26T10:01:22.776Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 2,
               "Title": "AuthService.cs",
               "DocumentMoniker": "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\FabriFrogeLauncher\\AuthService.cs",
               "RelativeDocumentMoniker": "FabriFrogeLauncher\\AuthService.cs",
@@ -138,7 +154,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 3,
               "Title": "GameEngine.cs",
               "DocumentMoniker": "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\FabriFrogeLauncher\\GameEngine.cs",
               "RelativeDocumentMoniker": "FabriFrogeLauncher\\GameEngine.cs",
@@ -150,7 +166,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 8,
+              "DocumentIndex": 9,
               "Title": "NeoForgeClientInstaller.cs",
               "DocumentMoniker": "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\FabriFrogeLauncher\\NeoForgeClientInstaller.cs",
               "RelativeDocumentMoniker": "FabriFrogeLauncher\\NeoForgeClientInstaller.cs",
@@ -162,7 +178,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 7,
+              "DocumentIndex": 8,
               "Title": "FabriFrogeLauncher.csproj",
               "DocumentMoniker": "C:\\Users\\branj\\Documents\\GitHub\\fabrifroge-launcher\\FabriFrogeLauncher\\FabriFrogeLauncher\\FabriFrogeLauncher.csproj",
               "RelativeDocumentMoniker": "FabriFrogeLauncher\\FabriFrogeLauncher.csproj",
@@ -174,7 +190,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 10,
+              "DocumentIndex": 11,
               "Title": "MainWindow.axaml.cs",
               "DocumentMoniker": "C:\\Users\\branj\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\MainWindow.axaml.cs",
               "RelativeDocumentMoniker": "..\\..\\..\\..\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\MainWindow.axaml.cs",
@@ -186,7 +202,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 11,
+              "DocumentIndex": 12,
               "Title": "Program.cs",
               "DocumentMoniker": "C:\\Users\\branj\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\Program.cs",
               "RelativeDocumentMoniker": "..\\..\\..\\..\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\Program.cs",
@@ -198,7 +214,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 12,
+              "DocumentIndex": 13,
               "Title": "App.axaml",
               "DocumentMoniker": "C:\\Users\\branj\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\App.axaml",
               "RelativeDocumentMoniker": "..\\..\\..\\..\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\App.axaml",
@@ -210,7 +226,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 9,
+              "DocumentIndex": 10,
               "Title": "MainWindow.axaml",
               "DocumentMoniker": "C:\\Users\\branj\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\MainWindow.axaml",
               "RelativeDocumentMoniker": "..\\..\\..\\..\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\MainWindow.axaml",
@@ -221,7 +237,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 13,
+              "DocumentIndex": 14,
               "Title": "App.axaml.cs",
               "DocumentMoniker": "C:\\Users\\branj\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\App.axaml.cs",
               "RelativeDocumentMoniker": "..\\..\\..\\..\\source\\repos\\FabriFrogeLauncher\\FabriFrogeLauncher\\App.axaml.cs",

@@ -256,21 +256,13 @@
                         Margin="14">
 
                     <Grid>
-                        <!-- ✅ FIX: reserve space for Version box by making it Auto,
-                                 and put the stretchy row as a spacer -->
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
-                            <!-- Header -->
                             <RowDefinition Height="Auto"/>
-                            <!-- Install folder -->
                             <RowDefinition Height="Auto"/>
-                            <!-- Account -->
                             <RowDefinition Height="Auto"/>
-                            <!-- Version + progress (ALWAYS visible) -->
                             <RowDefinition Height="*"/>
-                            <!-- Spacer (takes the squeeze) -->
                             <RowDefinition Height="Auto"/>
-                            <!-- Bottom actions -->
                         </Grid.RowDefinitions>
 
                         <!-- Header -->
@@ -323,14 +315,16 @@
                             </Grid>
                         </Border>
 
+                        <!-- ONLY showing the changed section to avoid breaking anything else -->
+
                         <!-- Account row -->
                         <Border Grid.Row="2"
-                                CornerRadius="12"
-                                Background="#66111827"
-                                BorderBrush="#33FFFFFF"
-                                BorderThickness="1"
-                                Padding="10"
-                                Margin="0,0,0,8">
+        CornerRadius="12"
+        Background="#66111827"
+        BorderBrush="#33FFFFFF"
+        BorderThickness="1"
+        Padding="10"
+        Margin="0,0,0,8">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -342,28 +336,38 @@
                                     <TextBlock x:Name="SignedInAsText" Foreground="White" FontSize="12"/>
                                 </StackPanel>
 
+                                <!-- ✅ UPDATED BUTTON ROW (3 buttons) -->
                                 <Grid Grid.Row="1" Margin="0,8,0,0">
                                     <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="8"/>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="8"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
 
                                     <Button x:Name="SignInButton"
-                                            Content="Sign In (Microsoft)"
-                                            Style="{StaticResource PillActionButtonStyle}"
-                                            Click="SignInButton_Click"/>
+                    Grid.Column="0"
+                    Content="Sign In"
+                    Style="{StaticResource PillActionButtonStyle}"
+                    Click="SignInButton_Click"/>
 
                                     <Button x:Name="SignOutButton"
-                                            Grid.Column="2"
-                                            Content="Sign Out"
-                                            Style="{StaticResource PillActionButtonStyle}"
-                                            Click="SignOutButton_Click"/>
+                    Grid.Column="2"
+                    Content="Sign Out"
+                    Style="{StaticResource PillActionButtonStyle}"
+                    Click="SignOutButton_Click"/>
+
+                                    <Button x:Name="WikiButton"
+                    Grid.Column="4"
+                    Content="Wiki"
+                    Style="{StaticResource PillActionButtonStyle}"
+                    Click="WikiButton_Click"/>
                                 </Grid>
                             </Grid>
                         </Border>
 
-                        <!-- ✅ Version + progress (now in an Auto row so it always shows) -->
+                        <!-- Version + progress -->
                         <Border Grid.Row="3"
                                 CornerRadius="12"
                                 Background="#66111827"
@@ -421,7 +425,7 @@
                             </Grid>
                         </Border>
 
-                        <!-- ✅ Spacer row that takes the squeeze -->
+                        <!-- Spacer row -->
                         <Border Grid.Row="4" Background="Transparent"/>
 
                         <!-- Bottom actions -->
@@ -567,7 +571,6 @@
                                                     Margin="0,0,0,8"
                                                     Click="RepairButton_Click"/>
 
-                                            <!-- ✅ NEW: Swap Accounts -->
                                             <Button x:Name="SwapAccountsButton"
                                                     Content="Swap Accounts"
                                                     Style="{StaticResource PillActionButtonStyle}"
