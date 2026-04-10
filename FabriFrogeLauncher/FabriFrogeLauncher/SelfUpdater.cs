@@ -104,12 +104,43 @@ public static class SelfUpdater
 
     private static string NormalizeVersion(string v)
     {
-        if (string.IsNullOrWhiteSpace(v)) return "0.0.0";
+        if (string.IsNullOrWhiteSpace(v))
+            return "0.0.0";
+
         v = v.Trim();
+
+        // Remove common prefixes
+        if (v.StartsWith("v", StringComparison.OrdinalIgnoreCase))
+            v = v[1..];
+
+        // Strip SemVer pre-release suffix (e.g. 1.1.0-beta.1)
         var dash = v.IndexOf('-');
-        if (dash >= 0) v = v[..dash];
-        if (v.StartsWith("v", StringComparison.OrdinalIgnoreCase)) v = v[1..];
-        return v;
+        if (dash >= 0)
+            v = v[..dash];
+
+        // Strip SemVer build metadata (e.g. 1.1.0+d51f9fce...)
+        var plus = v.IndexOf('+');
+        if (plus >= 0)
+            v = v[..plus];
+
+        v = v.Trim();
+
+        // Keep only the leading numeric/dot portion in case ProductVersion contains extra text
+        var sb = new StringBuilder(v.Length);
+        foreach (var ch in v)
+        {
+            if (char.IsDigit(ch) || ch == '.')
+                sb.Append(ch);
+            else
+                break;
+        }
+
+        var cleaned = sb.ToString().Trim('.');
+
+        if (string.IsNullOrWhiteSpace(cleaned))
+            return "0.0.0";
+
+        return cleaned;
     }
 
     public static async Task<string?> DownloadUpdateAsync(
@@ -299,7 +330,6 @@ public static class SelfUpdater
             log($"Apply mode: robocopy exit code: {rc}");
             if (rc >= 8)
             {
-                // fallback to managed copy if you want, but usually robocopy is the best shot
                 throw new InvalidOperationException($"Robocopy failed with exit code {rc}");
             }
 

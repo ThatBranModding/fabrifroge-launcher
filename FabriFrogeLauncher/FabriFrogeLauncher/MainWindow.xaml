@@ -329,7 +329,7 @@
 
                                     <Button x:Name="SignInButton"
                                             Grid.Column="0"
-                                            Content="Sign In (Microsoft)"
+                                            Content="Sign In"
                                             Style="{StaticResource PillActionButtonStyle}"
                                             Click="SignInButton_Click"/>
 
