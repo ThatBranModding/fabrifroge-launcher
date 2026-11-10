@@ -1,0 +1,20 @@
+# IDE and generated build files
+.vs/
+.idea/
+**/bin/
+**/obj/
+**/artifacts/
+**/.dotnet-home/
+*.user
+*.suo
+*.pdb
+
+# Release and package outputs
+dist/
+**/release/out/
+*.zip
+*.tar.gz
+
+# OS metadata
+.DS_Store
+Thumbs.db

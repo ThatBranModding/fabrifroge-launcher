@@ -1,0 +1,114 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="FabriFrogeLauncher.MainWindow"
+        Title="FabriFroge Launcher"
+        Width="832" Height="525" MinWidth="760" MinHeight="490"
+        SystemDecorations="None" CanResize="True" Background="#14283A">
+  <Window.Styles>
+    <Style Selector="Button">
+      <Setter Property="Background" Value="#344A5F"/><Setter Property="Foreground" Value="White"/>
+      <Setter Property="BorderBrush" Value="#738597"/><Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="18"/><Setter Property="Padding" Value="13,7"/>
+      <Setter Property="FontSize" Value="13"/><Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button:pointerover"><Setter Property="Background" Value="#4B6278"/></Style>
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="#F7F8FA"/><Setter Property="Foreground" Value="#182432"/>
+      <Setter Property="BorderBrush" Value="#AAB7C3"/><Setter Property="Padding" Value="8,5"/>
+    </Style>
+    <Style Selector="ComboBox"><Setter Property="Background" Value="#F7F8FA"/><Setter Property="Foreground" Value="#182432"/></Style>
+    <Style Selector="NumericUpDown"><Setter Property="Background" Value="#F7F8FA"/><Setter Property="Foreground" Value="#182432"/><Setter Property="BorderBrush" Value="#AAB7C3"/></Style>
+  </Window.Styles>
+  <Grid RowDefinitions="46,*" ClipToBounds="True">
+    <Image x:Name="BackgroundImage" Grid.RowSpan="2" Stretch="UniformToFill" IsHitTestVisible="False"/>
+    <Border Grid.RowSpan="2" Background="#180D1A26" IsHitTestVisible="False"/>
+    <Grid Grid.Row="0" Background="#B52E5D82" ColumnDefinitions="*,Auto" PointerPressed="TitleBar_PointerPressed">
+      <TextBlock Text="FabriFroge Launcher" Margin="15,0" VerticalAlignment="Center" FontSize="13" Foreground="White"/>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="0,0,13,0" VerticalAlignment="Center">
+        <Button Width="34" Height="28" Padding="0" Click="Minimize_Click"><TextBlock Text="—" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/></Button>
+        <Button Width="34" Height="28" Padding="0" Click="Maximize_Click"><TextBlock Text="□" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/></Button>
+        <Button Width="34" Height="28" Padding="0" Click="Close_Click"><TextBlock Text="×" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/></Button>
+      </StackPanel>
+    </Grid>
+    <Border Grid.Row="1" Width="330" HorizontalAlignment="Left" Margin="14,15,0,14"
+            Background="#D91B2B3A" BorderBrush="#9AB2C4" BorderThickness="1" CornerRadius="16">
+      <Grid RowDefinitions="*,Auto" Margin="14,12,14,12">
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Hidden">
+          <StackPanel Spacing="10">
+            <TextBlock Text="FabriFroge Launcher" FontSize="19" FontWeight="Bold" Foreground="White"/>
+            <TextBlock x:Name="VersionLabel" Text="FabriFroge Cobblemon" FontSize="12" Foreground="#D7E2EA" Margin="0,-8,0,1"/>
+            <Border Background="#5114202B" BorderBrush="#57768A" BorderThickness="1" CornerRadius="13" Padding="10">
+              <StackPanel Spacing="8">
+                <TextBlock Text="Install folder" FontSize="12" Foreground="White"/>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                  <TextBox x:Name="InstallPath" Grid.Column="0" Height="31" VerticalContentAlignment="Center"/>
+                  <Button Grid.Column="1" Content="Browse" Width="89" Click="Browse_Click"/>
+                </Grid>
+              </StackPanel>
+            </Border>
+            <Border Background="#5114202B" BorderBrush="#57768A" BorderThickness="1" CornerRadius="13" Padding="10">
+              <StackPanel Spacing="7">
+                <TextBlock x:Name="AccountLabel" Text="Signed in as: (offline)" FontSize="12" Foreground="White"/>
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                  <Button x:Name="SignInButton" Content="Sign In" Width="88" Click="SignIn_Click"/>
+                  <Button Content="Sign Out" Width="88" Click="SignOut_Click"/>
+                  <Button Content="Wiki" Width="88" Click="Wiki_Click"/>
+                </StackPanel>
+              </StackPanel>
+            </Border>
+            <Border Background="#5114202B" BorderBrush="#57768A" BorderThickness="1" CornerRadius="13" Padding="10">
+              <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="*,*">
+                  <StackPanel Grid.Column="0"><TextBlock Text="Installed" FontSize="11" Foreground="#D7E2EA"/><TextBlock x:Name="InstalledVersion" Text="(none)" FontSize="13" FontWeight="Bold" Foreground="White"/></StackPanel>
+                  <StackPanel Grid.Column="1" HorizontalAlignment="Right"><TextBlock Text="Latest" FontSize="11" Foreground="#D7E2EA"/><TextBlock x:Name="LatestVersion" Text="…" FontSize="13" FontWeight="Bold" Foreground="White"/></StackPanel>
+                </Grid>
+                <ProgressBar x:Name="Progress" Minimum="0" Maximum="100" Height="12" Foreground="#00C33A" Background="#65727C"/>
+                <TextBlock x:Name="Status" Text="Checking for updates…" FontSize="11" Foreground="White" TextTrimming="CharacterEllipsis"/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+        <Border Grid.Row="1" Background="#E5091118" BorderBrush="#65798A" BorderThickness="1" CornerRadius="20" Padding="10,9" Margin="0,9,0,0">
+          <Grid ColumnDefinitions="*,40" ColumnSpacing="8">
+            <Button x:Name="PlayButton" Grid.Column="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Background="#FFE500" Foreground="#101820" BorderBrush="#FFE500" CornerRadius="28" Height="56" Click="Play_Click">
+              <Grid ColumnDefinitions="38,*" Margin="4,0">
+                <Border Width="37" Height="37" CornerRadius="20" Background="#FFFF82" VerticalAlignment="Center"><TextBlock Text="▶" Foreground="#111820" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                <TextBlock Grid.Column="1" Text="Play" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Grid>
+            </Button>
+            <Button Grid.Column="1" x:Name="PlayMenuButton" Width="40" Height="40" Padding="0" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#101820" BorderBrush="#101820" CornerRadius="22" Click="PlayMenu_Click">
+              <StackPanel Spacing="3" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <Border Width="14" Height="2" Background="White" CornerRadius="1"/>
+                <Border Width="14" Height="2" Background="White" CornerRadius="1"/>
+                <Border Width="14" Height="2" Background="White" CornerRadius="1"/>
+              </StackPanel>
+            </Button>
+            <Popup x:Name="PlayMenuPopup" PlacementTarget="{Binding #PlayMenuButton}" Placement="Top" IsLightDismissEnabled="True">
+              <Border Background="#F51B2B3A" BorderBrush="#91A9BA" BorderThickness="1" CornerRadius="12" Padding="7">
+                <ScrollViewer MaxHeight="420" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="4">
+                  <Button Content="Check pack updates" Click="CheckUpdates_Click"/>
+                  <Button Content="Install / update" Click="Install_Click"/>
+                  <Button Content="Repair files" Click="Repair_Click"/>
+                  <Button Content="Check launcher update" Click="LauncherUpdate_Click"/>
+                  <Button Content="Show / hide console" Click="ToggleConsole_Click"/>
+                  <Border Height="1" Background="#72899A" Margin="4,3"/>
+                  <TextBlock Text="Memory allocation" Foreground="White" Margin="5,3,0,0"/>
+                  <NumericUpDown x:Name="RamInput" Minimum="2048" Maximum="65536" Increment="1024" Value="7168" ValueChanged="Ram_Changed" Height="30"/>
+                  <TextBlock Text="Microsoft app client ID (public)" Foreground="White" Margin="5,3,0,0"/>
+                  <TextBox x:Name="MicrosoftClientIdInput" Watermark="Application (client) ID" Height="30"/>
+                  <Button Content="Save settings" Click="SaveSettings_Click"/>
+                </StackPanel>
+                </ScrollViewer>
+              </Border>
+            </Popup>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
+    <TextBox x:Name="Console" Grid.Row="1" IsVisible="False" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+             Width="420" Height="145" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,14,14"
+             Background="#E8101419" Foreground="#B8F3C6" BorderBrush="#9AB2C4"/>
+  </Grid>
+</Window>

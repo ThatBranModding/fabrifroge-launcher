@@ -76,7 +76,9 @@ public sealed class WebpBackgroundPlayer : IDisposable
 
                 while (!ct.IsCancellationRequested)
                 {
-                    var options = new SKCodecOptions(idx);
+                    // Animated WebP frames are often partial rectangles. Ask Skia to
+                    // reconstruct the required prior frame into the destination bitmap.
+                    var options = new SKCodecOptions(idx, -1);
                     var result = codec.GetPixels(skBitmap.Info, skBitmap.GetPixels(), options);
 
                     if (result != SKCodecResult.Success &&

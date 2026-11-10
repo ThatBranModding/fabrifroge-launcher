@@ -8,6 +8,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using CmlLib.Core.Auth;
 using CmlLib.Core.Auth.Microsoft;
+using Microsoft.Identity.Client;
+using XboxAuthNet.Game.Msal;
+using XboxAuthNet.Game.Msal.OAuth;
 
 namespace FabriFrogeLauncher;
 
@@ -18,6 +21,26 @@ public static class AuthService
     // Optional debug toggle file (place inside installRoot)
     private const string AuthDebugToggleFile = "enable_auth_debug.txt";
     private const string AuthDebugReportFile = "auth_debug_report.txt";
+
+    private static string GetMicrosoftClientId(string? configuredClientId)
+    {
+        var clientId = Environment.GetEnvironmentVariable("FABRIFROGE_MSAL_CLIENT_ID") ?? configuredClientId;
+        if (string.IsNullOrWhiteSpace(clientId))
+            throw new InvalidOperationException("Set the Microsoft app client ID in Settings before signing in. Register a public client app for personal Microsoft accounts and have its ID allow-listed for Minecraft Xbox authentication.");
+        if (!Guid.TryParse(clientId.Trim(), out _))
+            throw new InvalidOperationException("The Microsoft app client ID must be the GUID shown as Application (client) ID in the Microsoft app registration.");
+        return clientId.Trim();
+    }
+
+    private static async Task<JELoginHandler> BuildLoginHandlerAsync(
+        string? configuredClientId,
+        Func<DeviceCodeResult, Task>? deviceCodeCallback = null)
+    {
+        var msal = await MsalClientHelper.BuildApplicationWithCache(GetMicrosoftClientId(configuredClientId)).ConfigureAwait(false);
+        return new JELoginHandlerBuilder()
+            .WithOAuthProvider(new MsalDeviceCodeProvider(msal, deviceCodeCallback ?? (_ => Task.CompletedTask)))
+            .Build();
+    }
 
     // ---- Paths ----
 
@@ -221,7 +244,12 @@ public static class AuthService
     /// If that fails due to expired/bad cached auth, clears launcher + library auth state
     /// and retries once with forced interactive login.
     /// </summary>
-    public static async Task<MSession> SignInMicrosoftAsync(string installRoot, Action<string> log, CancellationToken ct)
+    public static async Task<MSession> SignInMicrosoftAsync(
+        string installRoot,
+        Action<string> log,
+        CancellationToken ct,
+        Func<DeviceCodeResult, Task>? deviceCodeCallback = null,
+        string? microsoftClientId = null)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -235,7 +263,7 @@ public static class AuthService
         try
         {
             log("Starting Microsoft sign-in...");
-            return await TrySignInInternalAsync(installRoot, log, ct, debug, allowRecovery: true).ConfigureAwait(false);
+            return await TrySignInInternalAsync(installRoot, log, ct, debug, allowRecovery: true, deviceCodeCallback, microsoftClientId).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -261,13 +289,13 @@ public static class AuthService
     /// <summary>
     /// Signs out launcher-owned cached session file(s) and library/MSAL auth state.
     /// </summary>
-    public static async Task SignOutAsync(string installRoot, Action<string> log)
+    public static async Task SignOutAsync(string installRoot, Action<string> log, string? microsoftClientId = null)
     {
         ClearSavedSession(installRoot, log);
 
         try
         {
-            var loginHandler = JELoginHandlerBuilder.BuildDefault();
+            var loginHandler = await BuildLoginHandlerAsync(microsoftClientId).ConfigureAwait(false);
             await loginHandler.Signout().ConfigureAwait(false);
             log("Microsoft library signout OK.");
         }
@@ -280,7 +308,12 @@ public static class AuthService
     /// <summary>
     /// Swap Accounts: signs out cached library auth state and forces interactive login UI.
     /// </summary>
-    public static async Task<MSession> SwapAccountsAsync(string installRoot, Action<string> log, CancellationToken ct)
+    public static async Task<MSession> SwapAccountsAsync(
+        string installRoot,
+        Action<string> log,
+        CancellationToken ct,
+        Func<DeviceCodeResult, Task>? deviceCodeCallback = null,
+        string? microsoftClientId = null)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -298,7 +331,7 @@ public static class AuthService
         try
         {
             log("Swap Accounts: signing out library auth state...");
-            var loginHandler = JELoginHandlerBuilder.BuildDefault();
+            var loginHandler = await BuildLoginHandlerAsync(microsoftClientId, deviceCodeCallback).ConfigureAwait(false);
 
             try
             {
@@ -315,7 +348,7 @@ public static class AuthService
             ct.ThrowIfCancellationRequested();
 
             log("Swap Accounts: starting INTERACTIVE sign-in...");
-            var session = await loginHandler.AuthenticateInteractively().ConfigureAwait(false);
+            var session = await loginHandler.AuthenticateInteractively(ct).ConfigureAwait(false);
 
             ct.ThrowIfCancellationRequested();
             ValidateSessionOrThrow(session);
@@ -346,9 +379,11 @@ public static class AuthService
         Action<string> log,
         CancellationToken ct,
         bool debug,
-        bool allowRecovery)
+        bool allowRecovery,
+        Func<DeviceCodeResult, Task>? deviceCodeCallback,
+        string? microsoftClientId)
     {
-        var loginHandler = JELoginHandlerBuilder.BuildDefault();
+        var loginHandler = await BuildLoginHandlerAsync(microsoftClientId, deviceCodeCallback).ConfigureAwait(false);
 
         try
         {
@@ -372,13 +407,13 @@ public static class AuthService
             log("Microsoft sign-in: cached auth appears expired/bad. Clearing saved auth and retrying with interactive sign-in...");
             if (debug) AppendAuthDebugReport(installRoot, $"Recoverable auth expiry detected: {ex}");
 
-            await ResetLibraryAndLauncherAuthStateAsync(installRoot, log, debug).ConfigureAwait(false);
+            await ResetLibraryAndLauncherAuthStateAsync(installRoot, log, debug, microsoftClientId).ConfigureAwait(false);
 
             ct.ThrowIfCancellationRequested();
 
             log("Microsoft sign-in: starting forced interactive sign-in...");
-            var retryHandler = JELoginHandlerBuilder.BuildDefault();
-            var retrySession = await retryHandler.AuthenticateInteractively().ConfigureAwait(false);
+            var retryHandler = await BuildLoginHandlerAsync(microsoftClientId, deviceCodeCallback).ConfigureAwait(false);
+            var retrySession = await retryHandler.AuthenticateInteractively(ct).ConfigureAwait(false);
 
             ct.ThrowIfCancellationRequested();
             ValidateSessionOrThrow(retrySession);
@@ -397,13 +432,14 @@ public static class AuthService
     private static async Task ResetLibraryAndLauncherAuthStateAsync(
         string installRoot,
         Action<string> log,
-        bool debug)
+        bool debug,
+        string? microsoftClientId)
     {
         ClearSavedSession(installRoot, log);
 
         try
         {
-            var loginHandler = JELoginHandlerBuilder.BuildDefault();
+            var loginHandler = await BuildLoginHandlerAsync(microsoftClientId).ConfigureAwait(false);
             await loginHandler.Signout().ConfigureAwait(false);
             log("Auth recovery: library signout OK.");
             if (debug) AppendAuthDebugReport(installRoot, "Auth recovery: library signout OK.");

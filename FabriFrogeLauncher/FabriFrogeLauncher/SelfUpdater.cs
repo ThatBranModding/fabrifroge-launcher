@@ -1,8 +1,10 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using System.Formats.Tar;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -30,6 +32,14 @@ public static class SelfUpdater
         public string? Version { get; set; }
         public string? Url { get; set; }
         public string? Sha256 { get; set; }
+        public System.Collections.Generic.Dictionary<string, string>? Downloads { get; set; }
+
+        public string? GetPlatformUrl()
+        {
+            var rid = RuntimeInformation.RuntimeIdentifier;
+            if (Downloads != null) return Downloads.TryGetValue(rid, out var platformUrl) ? platformUrl : null;
+            return rid.Equals("win-x64", StringComparison.OrdinalIgnoreCase) ? Url : null;
+        }
     }
 
     public static string GetCurrentVersion()
@@ -148,7 +158,9 @@ public static class SelfUpdater
     {
         try
         {
-            var tmp = Path.Combine(Path.GetTempPath(), $"FabriFrogeLauncher_update_{Guid.NewGuid():N}.zip");
+            var uri = new Uri(url);
+            var extension = uri.AbsolutePath.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase) ? ".tar.gz" : ".zip";
+            var tmp = Path.Combine(Path.GetTempPath(), $"FabriFrogeLauncher_update_{Guid.NewGuid():N}{extension}");
             log($"Launcher update: downloading -> {tmp}");
 
             using var resp = await http.GetAsync(url, System.Net.Http.HttpCompletionOption.ResponseHeadersRead, ct);
@@ -246,28 +258,25 @@ public static class SelfUpdater
 
             if (!File.Exists(helperExePath))
                 throw new InvalidOperationException("Helper EXE not found after copy.");
+            EnsureExecutable(helperExePath);
 
             ApplyLog($"helperExePath={helperExePath}");
 
-            var args =
-                $"{ApplyArg} " +
-                $"\"{zipPath}\" " +
-                $"\"{installedDir}\" " +
-                $"\"{exeName}\" " +
-                $"\"{pid}\"";
-
             ApplyLog($"Launching helper apply-mode: {helperExePath}");
-            ApplyLog($"Args: {args}");
 
             var psi = new ProcessStartInfo
             {
                 FileName = helperExePath,
-                Arguments = args,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 WindowStyle = ProcessWindowStyle.Hidden,
                 WorkingDirectory = helperDir
             };
+            psi.ArgumentList.Add(ApplyArg);
+            psi.ArgumentList.Add(zipPath);
+            psi.ArgumentList.Add(installedDir);
+            psi.ArgumentList.Add(exeName);
+            psi.ArgumentList.Add(pid.ToString());
 
             // ✅ Flag to stop App.xaml.cs from redirecting helper back to install root
             psi.Environment["FF_UPDATER_HELPER"] = "1";
@@ -322,16 +331,18 @@ public static class SelfUpdater
             Directory.CreateDirectory(extractDir);
 
             log($"Apply mode: extracting zip -> {extractDir}");
-            ZipFile.ExtractToDirectory(zipPath, extractDir, overwriteFiles: true);
+            if (zipPath.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase))
+            {
+                await using var archiveStream = File.OpenRead(zipPath);
+                using var gzip = new GZipStream(archiveStream, CompressionMode.Decompress);
+                TarFile.ExtractToDirectory(gzip, extractDir, overwriteFiles: true);
+            }
+            else ZipFile.ExtractToDirectory(zipPath, extractDir, overwriteFiles: true);
 
             // ✅ Use robocopy FIRST (better with transient locks)
             log($"Apply mode: robocopy mirror -> {targetDir}");
-            var rc = RunRobocopyMirror(extractDir, targetDir, log);
-            log($"Apply mode: robocopy exit code: {rc}");
-            if (rc >= 8)
-            {
-                throw new InvalidOperationException($"Robocopy failed with exit code {rc}");
-            }
+            var payloadRoot = FindPayloadRoot(extractDir, exeName);
+            CopyDirectoryRecursive(payloadRoot, targetDir);
 
             // cleanup
             try { File.Delete(zipPath); } catch { }
@@ -344,6 +355,7 @@ public static class SelfUpdater
                 if (!string.IsNullOrWhiteSpace(found))
                     newExePath = found!;
             }
+            EnsureExecutable(newExePath);
 
             log($"Apply mode: relaunching: {newExePath}");
 
@@ -465,11 +477,32 @@ public static class SelfUpdater
     {
         try
         {
-            foreach (var f in Directory.EnumerateFiles(root, "*.exe", SearchOption.AllDirectories))
-                return f;
+            var currentName = Path.GetFileName(GetExePath());
+            var matching = Directory.EnumerateFiles(root, currentName, SearchOption.AllDirectories).FirstOrDefault();
+            if (matching != null) return matching;
+            foreach (var f in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+                if (Path.GetFileName(f).Equals("FabriFrogeLauncher", StringComparison.OrdinalIgnoreCase) || Path.GetFileName(f).Equals("FabriFrogeLauncher.exe", StringComparison.OrdinalIgnoreCase)) return f;
         }
         catch { }
         return null;
+    }
+
+    private static string FindPayloadRoot(string root, string executableName)
+    {
+        try
+        {
+            var candidate = Directory.EnumerateFiles(root, executableName, SearchOption.AllDirectories).FirstOrDefault();
+            if (candidate != null) return Path.GetDirectoryName(candidate)!;
+        }
+        catch { }
+        return root;
+    }
+
+    private static void EnsureExecutable(string path)
+    {
+        if (OperatingSystem.IsWindows() || !File.Exists(path)) return;
+        try { File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute); }
+        catch { }
     }
 
     private static string GetExePath()

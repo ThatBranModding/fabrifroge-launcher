@@ -16,7 +16,8 @@ public static class GameEngine
 {
     private static (string javaExe, string javawExe) ResolveJava(string installRoot)
     {
-        // NOTE: you discovered your runtime path is FabriFroge\FabriFroge\runtimes\temurin-21\bin
+        var executable = OperatingSystem.IsWindows() ? "java.exe" : "java";
+        var guiExecutable = OperatingSystem.IsWindows() ? "javaw.exe" : executable;
         var candidates = new[]
         {
             Path.Combine(installRoot, "runtimes", "temurin-21", "bin"),
@@ -30,14 +31,17 @@ public static class GameEngine
 
         foreach (var dir in candidates)
         {
-            var java = Path.Combine(dir, "java.exe");
-            var javaw = Path.Combine(dir, "javaw.exe");
-            if (File.Exists(java) && File.Exists(javaw))
+            var java = Path.Combine(dir, executable);
+            var javaw = Path.Combine(dir, guiExecutable);
+            if (File.Exists(java))
                 return (java, javaw);
         }
 
+        var bundled = JavaRuntime.JavaPath(installRoot);
+        if (File.Exists(bundled)) return (bundled, bundled);
+
         throw new Exception(
-            "Java runtime missing. Could not locate java.exe/javaw.exe under:\n" +
+            $"Java runtime missing. Could not locate {executable} under:\n" +
             string.Join("\n", candidates));
     }
 
@@ -178,19 +182,24 @@ public static class GameEngine
         string offlineUsernameFallback,
         int ramMb,
         Action<string> log,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? gameDirectoryOverride = null,
+        string? javaPathOverride = null)
     {
         var instanceRoot = Installer.GetInstanceRoot(installRoot, manifest.PackId);
-        var mcDir = Path.Combine(instanceRoot, ".minecraft");
+        var mcDir = string.IsNullOrWhiteSpace(gameDirectoryOverride)
+            ? Path.Combine(instanceRoot, ".minecraft")
+            : Path.GetFullPath(gameDirectoryOverride);
         Directory.CreateDirectory(mcDir);
 
         var (javaExe, javawExe) = ResolveJava(installRoot);
+        if (!string.IsNullOrWhiteSpace(javaPathOverride) && File.Exists(javaPathOverride)) javaExe = javaPathOverride;
 
         // Use java.exe for redirected output capture.
         log($"Using Java for launch: {javaExe}");
         log($"javaw.exe also found at: {javawExe}");
 
-        // Ensure NeoForge installed into THIS instance’s .minecraft
+        // Ensure NeoForge installed into THIS instanceï¿½s .minecraft
         if (manifest.Loader?.Type?.Equals("neoforge", StringComparison.OrdinalIgnoreCase) == true)
         {
             await NeoForgeClientInstaller.EnsureInstalledAsync(

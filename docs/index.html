@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Project information for FabriFroge Launcher, an independent launcher for the FabriFroge Minecraft Java Edition modpack.">
+  <title>FabriFroge Launcher</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0b1420;
+      color: #edf4fb;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse at 82% 8%, rgba(44, 142, 194, .26), transparent 36rem),
+        radial-gradient(ellipse at 4% 88%, rgba(70, 182, 137, .15), transparent 32rem),
+        #0b1420;
+    }
+    main { width: min(880px, calc(100% - 36px)); margin: 0 auto; padding: 72px 0 48px; }
+    .brand { display: inline-flex; align-items: center; gap: 12px; color: #a9f3ca; font-weight: 750; letter-spacing: .045em; }
+    .mark { width: 13px; height: 13px; border-radius: 4px; background: #71e5a4; box-shadow: 0 0 24px rgba(113,229,164,.55); transform: rotate(45deg); }
+    h1 { margin: 26px 0 14px; max-width: 720px; font-size: clamp(2.35rem, 7vw, 4.4rem); line-height: 1.02; letter-spacing: -.055em; }
+    .lede { max-width: 700px; color: #b9c9da; font-size: 1.15rem; line-height: 1.75; }
+    .badge { display: inline-block; margin-top: 12px; padding: 7px 11px; border: 1px solid rgba(176,202,224,.2); border-radius: 999px; color: #cbd9e7; background: rgba(255,255,255,.045); font-size: .88rem; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 40px; }
+    section { padding: 22px; border: 1px solid rgba(176,202,224,.15); border-radius: 16px; background: rgba(20,34,50,.78); box-shadow: 0 18px 55px rgba(0,0,0,.14); }
+    section h2 { margin: 0 0 10px; font-size: 1.05rem; }
+    section p { margin: 0; color: #b9c9da; line-height: 1.7; }
+    .notice { grid-column: 1 / -1; }
+    footer { margin-top: 28px; color: #90a3b7; font-size: .9rem; line-height: 1.7; }
+    @media (max-width: 620px) { main { padding-top: 44px; } .grid { grid-template-columns: 1fr; } .notice { grid-column: auto; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand"><span class="mark" aria-hidden="true"></span><span>FABRIFROGE</span></div>
+    <h1>FabriFroge Launcher</h1>
+    <p class="lede">A desktop launcher for the FabriFroge Minecraft: Java Edition modpack. It helps players install and update the pack, configure memory, and start the game.</p>
+    <span class="badge">Independent project · Private distribution</span>
+
+    <div class="grid">
+      <section>
+        <h2>What it does</h2>
+        <p>The launcher downloads the pack files and required NeoForge components, prepares the Java runtime when needed, and launches the configured game installation.</p>
+      </section>
+      <section>
+        <h2>Account sign-in</h2>
+        <p>Microsoft sign-in is used to verify a player's own Minecraft: Java Edition account and obtain the session needed to launch the game. Sign-in uses Microsoft's device-code flow in the system browser.</p>
+      </section>
+      <section>
+        <h2>Local account data</h2>
+        <p>The launcher caches session information on the player's device so it can restore a signed-in session. The launcher does not ask users to type their Microsoft password into the launcher.</p>
+      </section>
+      <section>
+        <h2>Availability</h2>
+        <p>FabriFroge Launcher is privately distributed to players of the FabriFroge pack. This page provides project information; it does not publish launcher downloads or source code.</p>
+      </section>
+      <section class="notice">
+        <h2>Independent project</h2>
+        <p>FabriFroge Launcher is not affiliated with, endorsed by, or sponsored by Microsoft, Mojang Studios, Xbox, or Minecraft. Minecraft is a trademark of Microsoft Corporation.</p>
+      </section>
+    </div>
+
+    <footer>Project information for Microsoft/Minecraft app review. Authentication is provided for legitimate account sign-in and Minecraft ownership verification.</footer>
+  </main>
+</body>
+</html>
