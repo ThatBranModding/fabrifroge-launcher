@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -85,17 +86,11 @@ public static class NeoForgeClientInstaller
                     fileName: javaExePath,
                     workingDir: mcDir,
                     args: args,
-                    ct: ct);
-
-                // Always log output (trimmed) so we can see what happened
-                if (!string.IsNullOrWhiteSpace(output))
-                {
-                    foreach (var line in output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries))
-                        log("[NeoForge] " + line);
-                }
+                    ct: ct,
+                    onOutput: line => log("[NeoForge] " + line));
 
                 if (code != 0)
-                    throw new Exception($"NeoForge installer exited with code {code}");
+                    throw new Exception($"NeoForge installer exited with code {code}. Output: {output}");
 
                 // Did it install?
                 if (IsNeoForgeInstalled(mcDir, neoforgeVersion))
@@ -133,7 +128,8 @@ public static class NeoForgeClientInstaller
         string fileName,
         string workingDir,
         string args,
-        CancellationToken ct)
+        CancellationToken ct,
+        Action<string> onOutput)
     {
         var psi = new ProcessStartInfo
         {
@@ -146,17 +142,57 @@ public static class NeoForgeClientInstaller
             RedirectStandardError = true
         };
 
-        using var proc = Process.Start(psi) ?? throw new Exception("Failed to start process.");
+        using var proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
+        var output = new StringBuilder();
+        var outputLock = new object();
+        var streamsClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var closedStreams = 0;
 
-        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
-        var stderrTask = proc.StandardError.ReadToEndAsync();
+        void ReceiveLine(string? line, bool isError)
+        {
+            if (line == null)
+            {
+                if (Interlocked.Increment(ref closedStreams) == 2)
+                    streamsClosed.TrySetResult();
+                return;
+            }
 
-        await proc.WaitForExitAsync(ct);
+            var rendered = isError ? "[stderr] " + line : line;
+            lock (outputLock) output.AppendLine(rendered);
+            try { onOutput(rendered); } catch { }
+        }
 
-        var stdout = await stdoutTask;
-        var stderr = await stderrTask;
+        proc.OutputDataReceived += (_, e) => ReceiveLine(e.Data, false);
+        proc.ErrorDataReceived += (_, e) => ReceiveLine(e.Data, true);
 
-        var output = (stdout ?? "") + (string.IsNullOrWhiteSpace(stderr) ? "" : "\n" + stderr);
-        return (proc.ExitCode, output);
+        if (!proc.Start()) throw new Exception("Failed to start NeoForge installer process.");
+        proc.BeginOutputReadLine();
+        proc.BeginErrorReadLine();
+
+        using var processTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+        using var processToken = CancellationTokenSource.CreateLinkedTokenSource(ct, processTimeout.Token);
+        try
+        {
+            await proc.WaitForExitAsync(processToken.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch { }
+            if (!ct.IsCancellationRequested)
+                throw new TimeoutException("NeoForge installer did not exit within 10 minutes.");
+            throw;
+        }
+
+        // NeoForge can leave child processes holding inherited stdout/stderr
+        // handles after the installer exits. Don't let those pipes keep the UI
+        // stuck after the client profile has been installed.
+        using var streamDrainTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        streamDrainTimeout.CancelAfter(TimeSpan.FromSeconds(2));
+        try { await streamsClosed.Task.WaitAsync(streamDrainTimeout.Token); }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
+
+        string captured;
+        lock (outputLock) captured = output.ToString();
+        return (proc.ExitCode, captured);
     }
 }
