@@ -40,17 +40,29 @@ jobs:
           cp "$HOME/.ssh/host-key-scan" "$HOME/.ssh/known_hosts"
           rm "$HOME/.ssh/host-key-scan"
           chmod 600 "$HOME/.ssh/known_hosts"
+          remote_download='/C:/Users/Branserver/Downloads/nginx-1.26.3/www/download'
           batch_file="$(mktemp)"
-          trap 'rm -f "$batch_file"' EXIT
+          output_file="$(mktemp)"
+          trap 'rm -f "$batch_file" "$output_file"' EXIT
           printf '%s\n' \
-            'cd "/C:/Users/Branserver/Downloads/nginx-1.26.3/www"' \
-            '-mkdir download' \
-            'put "docs/download/index.html" "download/index.html"' \
-            'put "docs/download/latest.json" "download/latest.json"' > "$batch_file"
-          sshpass -e sftp -P 22 \
+            "put \"docs/download/index.html\" \"$remote_download/index.html\"" \
+            "put \"docs/download/latest.json\" \"$remote_download/latest.json\"" \
+            "ls -l \"$remote_download/index.html\"" \
+            "ls -l \"$remote_download/latest.json\"" > "$batch_file"
+          if ! sshpass -e sftp -P 22 \
             -o PreferredAuthentications=password \
             -o PubkeyAuthentication=no \
             -o BatchMode=no \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            launcher@ftp.fabrifroge.com < "$batch_file"
+            launcher@ftp.fabrifroge.com < "$batch_file" > "$output_file" 2>&1; then
+            cat "$output_file"
+            exit 1
+          fi
+          cat "$output_file"
+          if grep -Eiq 'permission denied|couldn.t stat|dest open|remote .*failure' "$output_file"; then
+            echo "SFTP reported an error while publishing the download page" >&2
+            exit 1
+          fi
+          grep -Fq "$remote_download/index.html" "$output_file"
+          grep -Fq "$remote_download/latest.json" "$output_file"
