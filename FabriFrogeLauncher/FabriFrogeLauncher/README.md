@@ -9,7 +9,7 @@ Cross-platform migration of the Windows WPF launcher into an Avalonia/.NET 8 nat
 - Host-OS Temurin Java 21 provisioning, NeoForge client install, and Minecraft launch.
 - Install folder and RAM settings for the single default pack profile, the animated WebP background, launcher and pack update prompts, wiki link, and console drawer.
 - Microsoft account sign-in uses MSAL and opens the user's default system browser on Windows, macOS, and Linux. The public client ID is built into the launcher; it is not a client secret.
-- Launcher self-update apply mode supports ZIP and TAR.GZ platform packages. Update metadata can provide a `downloads` object keyed by .NET RID (such as `win-x64`, `osx-arm64`, and `linux-x64`). Legacy `url` is used only for `win-x64`.
+- Launcher self-update accepts only ZIP/TAR.GZ packages keyed by OS and architecture, each with its own required SHA-256 checksum. There is no fallback to the legacy Windows-only launcher package.
 
 ## UI
 
@@ -33,8 +33,18 @@ MSAL requires a publisher-owned Microsoft Entra public-client app. The launcher 
 
 See [CmlLib's MSAL client-ID guide](https://cmllib.github.io/CmlLib.Core-wiki/en/auth.microsoft/xboxauthnet.game.msal/clientid/) and [Microsoft's Minecraft client allow-list guidance](https://help.minecraft.net/hc/en-us/articles/16254801392141).
 
-Self-contained publish outputs and packages are in the workspace-level `dist/` directory. Six RIDs were published successfully: `win-x64`, `win-arm64`, `osx-x64`, `osx-arm64`, `linux-x64`, and `linux-arm64`. The `.zip` and `.tar.gz` packages are also present there. `make-artifacts.py` regenerates the packages after the six RID folders have been published. `.github/workflows/publish-fabrifroge-launcher.yml` builds and packages on native GitHub runners.
+### Native installers and release flow
+
+The `.github/workflows/release-launcher.yml` workflow builds self-contained release packages for all six RIDs (`win-x64`, `win-arm64`, `osx-x64`, `osx-arm64`, `linux-x64`, and `linux-arm64`):
+
+- Windows: `.exe` setup installers and portable `.zip` archives for x64 and ARM64.
+- macOS: `.dmg` installers and `.tar.gz` self-update archives for Intel and Apple silicon. The DMGs include an Applications shortcut. They are unsigned and may show Gatekeeper warnings until signed and notarized by the publisher.
+- Linux: `.deb` installers and `.tar.gz` self-update archives for x64 and ARM64.
+
+Set the project version, then push a tag like `launcher-v1.1.4`. The workflow creates a GitHub release with installers, self-update archives, checksums, and `launcher-self-latest.json`. The launcher reads this feed from the latest GitHub release.
+
+Modpack publishing is independent. Run `FabriFrogeLauncher/run-publish-build.bat` or `release/publish-modpack.ps1` to upload only pack metadata and files. It does not modify the launcher feed or upload a launcher binary. The old `publish-release.ps1` remains as a compatibility entry point to the modpack-only publisher.
 
 ## Verification limits
 
-The project targets six RIDs. macOS archives require the publisher's Apple Developer signing and notarization credentials to avoid Gatekeeper warnings. The hard-coded client ID must be allow-listed for Minecraft Xbox authentication. Configure per-RID launcher self-update URLs before distributing updates.
+The project targets six RIDs. macOS installers need Apple Developer signing and notarization to avoid Gatekeeper warnings. The hard-coded client ID must be allow-listed for Minecraft Xbox authentication.

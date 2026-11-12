@@ -1,7 +1,9 @@
 from pathlib import Path
 import shutil, tarfile, zipfile
+import xml.etree.ElementTree as ET
 
 root = Path(__file__).resolve().parent / "artifacts"
+version = ET.parse(Path(__file__).with_name("FabriFrogeLauncher.csproj")).findtext("./PropertyGroup/Version") or "0.0.0"
 for rid in ("win-x64", "win-arm64"):
     source = root / rid
     out = root / f"FabriFrogeLauncher-{rid}.zip"
@@ -38,9 +40,9 @@ for rid in ("osx-x64", "osx-arm64"):
             else: shutil.copy2(path, destination)
     executable = macos / "FabriFrogeLauncher"
     executable.chmod(0o755)
-    (app / "Contents" / "Info.plist").write_text('''<?xml version="1.0" encoding="UTF-8"?>
+    (app / "Contents" / "Info.plist").write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict><key>CFBundleExecutable</key><string>FabriFrogeLauncher</string><key>CFBundleIdentifier</key><string>com.fabrifroge.launcher</string><key>CFBundleName</key><string>FabriFroge Launcher</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleVersion</key><string>1.1.2</string><key>LSMinimumSystemVersion</key><string>12.0</string></dict></plist>''', encoding="utf-8")
+<plist version="1.0"><dict><key>CFBundleExecutable</key><string>FabriFrogeLauncher</string><key>CFBundleIdentifier</key><string>com.fabrifroge.launcher</string><key>CFBundleName</key><string>FabriFroge Launcher</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleVersion</key><string>{version}</string><key>LSMinimumSystemVersion</key><string>12.0</string></dict></plist>''', encoding="utf-8")
     for path in app.rglob("*"):
         if path.is_dir(): path.chmod(0o755)
         elif path.name == "FabriFrogeLauncher": path.chmod(0o755)

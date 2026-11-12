@@ -15,7 +15,7 @@ namespace FabriFrogeLauncher;
 
 public static class SelfUpdater
 {
-    private const string LauncherLatestUrl = "https://files.fabrifroge.com/launcher/self/latest.json";
+    private const string LauncherLatestUrl = "https://github.com/ThatBranModding/fabrifroge-launcher/releases/latest/download/launcher-self-latest.json";
     private const string ApplyArg = "--apply-update";
 
     private static readonly string ApplyLogPath =
@@ -30,16 +30,29 @@ public static class SelfUpdater
     public sealed class LauncherUpdateInfo
     {
         public string? Version { get; set; }
+        public System.Collections.Generic.Dictionary<string, LauncherPackage>? Downloads { get; set; }
+
+        public LauncherPackage? GetPlatformPackage()
+        {
+            var architecture = RuntimeInformation.ProcessArchitecture;
+            var rid = OperatingSystem.IsWindows()
+                ? architecture == Architecture.Arm64 ? "win-arm64" : architecture == Architecture.X64 ? "win-x64" : ""
+                : OperatingSystem.IsMacOS()
+                    ? architecture == Architecture.Arm64 ? "osx-arm64" : architecture == Architecture.X64 ? "osx-x64" : ""
+                    : OperatingSystem.IsLinux()
+                        ? architecture == Architecture.Arm64 ? "linux-arm64" : architecture == Architecture.X64 ? "linux-x64" : ""
+                        : "";
+            if (Downloads == null) return null;
+            foreach (var entry in Downloads)
+                if (entry.Key.Equals(rid, StringComparison.OrdinalIgnoreCase)) return entry.Value;
+            return null;
+        }
+    }
+
+    public sealed class LauncherPackage
+    {
         public string? Url { get; set; }
         public string? Sha256 { get; set; }
-        public System.Collections.Generic.Dictionary<string, string>? Downloads { get; set; }
-
-        public string? GetPlatformUrl()
-        {
-            var rid = RuntimeInformation.RuntimeIdentifier;
-            if (Downloads != null) return Downloads.TryGetValue(rid, out var platformUrl) ? platformUrl : null;
-            return rid.Equals("win-x64", StringComparison.OrdinalIgnoreCase) ? Url : null;
-        }
     }
 
     public static string GetCurrentVersion()

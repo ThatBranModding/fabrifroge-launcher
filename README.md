@@ -2,15 +2,11 @@
 
 FabriFroge Launcher is an Avalonia/.NET 8 desktop launcher for the FabriFroge Minecraft: Java Edition pack, designed to run natively on Windows, macOS, and Linux.
 
-## Platform packages
+## Native installers and versioning
 
-The native build workflow targets:
+Launcher releases create Windows `.exe` installers, macOS `.dmg` installers, and Linux `.deb` installers for x64 and ARM64, plus portable ZIP/TAR.GZ archives for automatic updates. The macOS packages are unsigned until signed and notarized by the publisher.
 
-- Windows: `win-x64`, `win-arm64`
-- macOS: `osx-x64`, `osx-arm64`
-- Linux: `linux-x64`, `linux-arm64`
-
-Packages are self-contained .NET publishes. Java 21 is provisioned by the launcher when needed. macOS archives are unsigned and may show Gatekeeper warnings until signed and notarized by the publisher.
+Push a tag such as `launcher-v1.1.4` to run `.github/workflows/release-launcher.yml`. The release includes per-platform SHA-256 metadata. The launcher update feed is separate from the modpack feed.
 
 ## Features
 
@@ -19,7 +15,7 @@ Packages are self-contained .NET publishes. Java 21 is provisioned by the launch
 - Host-OS Temurin Java 21 provisioning, NeoForge client installation, and game launch.
 - Install-folder and RAM settings for the single default pack profile.
 - Animated WebP background, launcher and pack update prompts, wiki link, and console drawer.
-- ZIP and TAR.GZ self-update support with per-platform downloads in launcher metadata.
+- ZIP and TAR.GZ self-update support with per-platform URLs and required SHA-256 verification.
 
 ## Build
 
@@ -29,7 +25,7 @@ Install the .NET 8 SDK, then run from the repository root:
 dotnet build FabriFrogeLauncher/FabriFrogeLauncher/FabriFrogeLauncher.csproj -c Release
 ```
 
-The GitHub Actions workflow at `.github/workflows/publish-fabrifroge-launcher.yml` builds all six RIDs on native Windows, macOS, and Linux runners. Run it manually from Actions or push a tag matching `launcher-v*` to build packages.
+Build locally with `dotnet build FabriFrogeLauncher/FabriFrogeLauncher.csproj -c Release`. Publish a modpack with `FabriFrogeLauncher/run-publish-build.bat`; that script changes only pack metadata and files, never the launcher update feed or launcher binaries.
 
 ## Microsoft sign-in setup
 

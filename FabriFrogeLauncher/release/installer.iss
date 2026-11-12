@@ -20,12 +20,12 @@ AppPublisher={#AppPublisher}
 DefaultDirName={localappdata}\FabriFroge\FabriFrogeLauncher
 DisableDirPage=yes
 DisableProgramGroupPage=yes
-OutputDir=.\out
+OutputDir=..\..\artifacts\release
 OutputBaseFilename=FabriFrogeLauncher-Setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
-ArchitecturesAllowed=x64
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesAllowed=x64 arm64
+ArchitecturesInstallIn64BitMode=x64 arm64
 PrivilegesRequired=lowest
 UninstallDisplayIcon={app}\{#AppExeName}
 

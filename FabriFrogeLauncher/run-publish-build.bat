@@ -1,2 +1,2 @@
-powershell -ExecutionPolicy Bypass -File .\release\publish-release.ps1
+powershell -ExecutionPolicy Bypass -File .\release\publish-modpack.ps1
 pause

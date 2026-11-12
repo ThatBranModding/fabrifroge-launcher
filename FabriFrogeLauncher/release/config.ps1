@@ -40,7 +40,6 @@ $WinScpComPath = "C:\Program Files (x86)\WinSCP\WinSCP.com"
 # Leave "" if you are NOT using a key (password login).
 $SshKeyPath = ""
 
-$SftpPassword = "2-4Woodlands"
 
 # Local paths
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -52,6 +51,10 @@ $LauncherProject = Join-Path $RepoRoot "FabriFrogeLauncher\FabriFrogeLauncher.cs
 # Public base URL (no trailing slash)
 $PublicBaseUrl = "https://files.fabrifroge.com"
 
+# Local inputs for modpack-only publishing. Override with environment variables if needed.
+$PackManifestDir = if ($env:FABRIFROGE_PACK_MANIFEST_DIR) { $env:FABRIFROGE_PACK_MANIFEST_DIR } else { "F:\neofroge stuff\FF LAUNCHER\FabriFrogeBuild\output\manifests" }
+$PackFilesSha256Dir = if ($env:FABRIFROGE_PACK_FILES_DIR) { $env:FABRIFROGE_PACK_FILES_DIR } else { "F:\neofroge stuff\FF LAUNCHER\FabriFrogeBuild\output\files\sha256" }
+
 # Where the launcher self update manifests live (URL paths)
 $LauncherSelfPath = "/launcher/self"
 $LauncherPath     = "/launcher"
@@ -59,10 +62,10 @@ $LauncherPath     = "/launcher"
 # Optional: Cloudflare purge
 $EnableCloudflarePurge = $false
 $CloudflareZoneId = "c9edd170c58b59c9bb60ffb5d960f5a4"
-$CloudflareApiToken = "de0e738fd083674d9dc4fe80cfe2207d77aae"
+# Set FABRIFROGE_CLOUDFLARE_API_TOKEN in the publishing shell if cache purging is enabled.
+$CloudflareApiToken = $env:FABRIFROGE_CLOUDFLARE_API_TOKEN
 
-# Only purge the “must be fresh” JSON
+# JSON URLs that may need cache purging.
 $PurgeUrls = @(
-  "$PublicBaseUrl$LauncherSelfPath/latest.json",
   "$PublicBaseUrl$LauncherPath/latest.json"
 )

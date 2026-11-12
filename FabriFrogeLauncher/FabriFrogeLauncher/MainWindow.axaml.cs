@@ -247,18 +247,18 @@ public partial class MainWindow : Window
         var current = SelfUpdater.GetCurrentVersion();
         if (SelfUpdater.IsNewer(info.Version, current, out var parsed))
         {
-            var updateUrl = info.GetPlatformUrl();
-            if (string.IsNullOrWhiteSpace(updateUrl))
+            var package = info.GetPlatformPackage();
+            if (package == null || string.IsNullOrWhiteSpace(package.Url) || string.IsNullOrWhiteSpace(package.Sha256))
             {
-                Log($"Launcher {parsed} is available, but update metadata has no package for {System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier}.");
+                Log($"Launcher {parsed} is available, but update metadata has no verified package for {System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier}.");
                 if (showStatus) Status.Text = "Update package unavailable for this platform";
                 return;
             }
             var accepted = await AskAsync("Launcher update", $"A launcher update is available.\n\nCurrent: {current}\nLatest: {parsed}\n\nUpdate now?");
             if (!accepted) { Log("Launcher update skipped."); return; }
-            var zip = await SelfUpdater.DownloadUpdateAsync(_http, updateUrl, Log, _operation.Token);
+            var zip = await SelfUpdater.DownloadUpdateAsync(_http, package.Url, Log, _operation.Token);
             if (zip == null) throw new InvalidOperationException("Launcher update download failed.");
-            if (!string.IsNullOrWhiteSpace(info.Sha256) && !SelfUpdater.VerifySha256(zip, info.Sha256, Log)) throw new InvalidDataException("Downloaded launcher update failed SHA-256 verification.");
+            if (!SelfUpdater.VerifySha256(zip, package.Sha256, Log)) throw new InvalidDataException("Downloaded launcher update failed SHA-256 verification.");
             SelfUpdater.StartApplyUpdateAndExit(zip, Log);
         }
         else if (showStatus) Status.Text = "Launcher is up to date";

@@ -1,0 +1,107 @@
+name: Build launcher installers
+
+on:
+  push:
+    tags: ["launcher-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            os: windows-latest
+          - rid: win-arm64
+            os: windows-latest
+          - rid: osx-x64
+            os: macos-latest
+          - rid: osx-arm64
+            os: macos-latest
+          - rid: linux-x64
+            os: ubuntu-latest
+          - rid: linux-arm64
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Read version
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content FabriFrogeLauncher/FabriFrogeLauncher.csproj
+          $version = [string]$project.Project.PropertyGroup.Version
+          if ($env:GITHUB_REF_NAME.StartsWith('launcher-v') -and $env:GITHUB_REF_NAME.Substring(10) -ne $version) { throw "Tag version must match project version $version" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Publish self-contained launcher
+        run: dotnet publish FabriFrogeLauncher/FabriFrogeLauncher.csproj -c Release -r ${{ matrix.rid }} --self-contained true -o artifacts/publish/${{ matrix.rid }}
+      - name: Build ZIP or native macOS/Linux installer
+        run: python FabriFrogeLauncher/package-platform.py --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }} --source artifacts/publish/${{ matrix.rid }} --output artifacts/release
+      - name: Build Windows setup installer
+        if: startsWith(matrix.rid, 'win-')
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
+          & $iscc "/DAppVersion=${{ steps.version.outputs.version }}" "/DSourceDir=$((Resolve-Path artifacts/publish/${{ matrix.rid }}).Path)" "/O$((Resolve-Path artifacts/release).Path)" FabriFrogeLauncher/release/installer.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup failed' }
+          Move-Item artifacts/release/FabriFrogeLauncher-Setup-${{ steps.version.outputs.version }}.exe artifacts/release/FabriFrogeLauncher-${{ steps.version.outputs.version }}-${{ matrix.rid }}-setup.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-${{ matrix.rid }}
+          path: artifacts/release/*
+          if-no-files-found: error
+
+  release:
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create release metadata and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#launcher-v}"
+          repo="${GITHUB_REPOSITORY}"
+          python - "$version" "$repo" "$tag" <<'PY'
+          import hashlib, json, pathlib, sys
+          version, repo, tag = sys.argv[1:]
+          root = pathlib.Path("artifacts")
+          downloads = {}
+          installers = {}
+          for rid in ("win-x64", "win-arm64", "osx-x64", "osx-arm64", "linux-x64", "linux-arm64"):
+              suffix = ".zip" if rid.startswith("win-") else ".tar.gz"
+              archive = root / f"FabriFrogeLauncher-{version}-{rid}{suffix}"
+              if not archive.exists():
+                  raise SystemExit(f"Missing update archive: {archive}")
+              url = f"https://github.com/{repo}/releases/download/{tag}/{archive.name}"
+              downloads[rid] = {"url": url, "sha256": hashlib.sha256(archive.read_bytes()).hexdigest()}
+              installer_ext = ".exe" if rid.startswith("win-") else ".dmg" if rid.startswith("osx-") else ".deb" if rid.startswith("linux-") else None
+              if installer_ext:
+                  pattern = f"FabriFrogeLauncher-{version}-{rid}-setup{installer_ext}" if rid.startswith("win-") else f"FabriFrogeLauncher-{version}-{rid}{installer_ext}"
+                  installer = root / pattern
+                  if not installer.exists():
+                      raise SystemExit(f"Missing installer: {installer}")
+                  installers[rid] = {"url": f"https://github.com/{repo}/releases/download/{tag}/{installer.name}", "sha256": hashlib.sha256(installer.read_bytes()).hexdigest()}
+          (root / "launcher-self-latest.json").write_text(json.dumps({"version": version, "downloads": downloads, "installers": installers}, indent=2) + "\n")
+          PY
+          (cd artifacts && sha256sum * > SHA256SUMS.txt)
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
