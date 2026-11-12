@@ -39,14 +39,14 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          [xml]$project = Get-Content FabriFrogeLauncher/FabriFrogeLauncher.csproj
+          [xml]$project = Get-Content FabriFrogeLauncher/FabriFrogeLauncher/FabriFrogeLauncher.csproj
           $version = [string]$project.Project.PropertyGroup.Version
           if ($env:GITHUB_REF_NAME.StartsWith('launcher-v') -and $env:GITHUB_REF_NAME.Substring(10) -ne $version) { throw "Tag version must match project version $version" }
           "version=$version" >> $env:GITHUB_OUTPUT
       - name: Publish self-contained launcher
-        run: dotnet publish FabriFrogeLauncher/FabriFrogeLauncher.csproj -c Release -r ${{ matrix.rid }} --self-contained true -o artifacts/publish/${{ matrix.rid }}
+        run: dotnet publish FabriFrogeLauncher/FabriFrogeLauncher/FabriFrogeLauncher.csproj -c Release -r ${{ matrix.rid }} --self-contained true -o artifacts/publish/${{ matrix.rid }}
       - name: Build ZIP or native macOS/Linux installer
-        run: python FabriFrogeLauncher/package-platform.py --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }} --source artifacts/publish/${{ matrix.rid }} --output artifacts/release
+        run: python FabriFrogeLauncher/FabriFrogeLauncher/package-platform.py --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }} --source artifacts/publish/${{ matrix.rid }} --output artifacts/release
       - name: Build Windows setup installer
         if: startsWith(matrix.rid, 'win-')
         shell: pwsh
