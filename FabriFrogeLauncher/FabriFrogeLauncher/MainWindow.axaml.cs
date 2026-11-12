@@ -17,7 +17,10 @@ namespace FabriFrogeLauncher;
 
 public partial class MainWindow : Window
 {
-    private const string LatestUrl = "https://files.fabrifroge.com/launcher/latest.json";
+    // Keep the cross-platform launcher on its own pack feed. The legacy
+    // launcher continues to use /launcher/latest.json and is not updated by
+    // publishing a v2 modpack.
+    private const string LatestUrl = "https://files.fabrifroge.com/launcher/v2/latest.json";
     private readonly HttpClient _http = Net.CreateHttpClient();
     private LauncherSettings _settings = new();
     private MSession? _session;

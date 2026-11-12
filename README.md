@@ -6,7 +6,7 @@ FabriFroge Launcher is an Avalonia/.NET 8 desktop launcher for the FabriFroge Mi
 
 Launcher releases create Windows `.exe` installers, macOS `.dmg` installers, and Linux `.deb` installers for x64 and ARM64, plus portable ZIP/TAR.GZ archives for automatic updates. The macOS packages are unsigned until signed and notarized by the publisher.
 
-Add the rotated homeserver password as the GitHub Actions repository secret `FABRIFROGE_SFTP_PASSWORD`, then push a version-matched tag such as `launcher-v1.1.6` to run `.github/workflows/release-launcher.yml`. The workflow publishes per-platform installers and SHA-256 update archives to the homeserver. The launcher update feed is separate from the modpack feed.
+Add the rotated homeserver password as the GitHub Actions repository secret `FABRIFROGE_SFTP_PASSWORD`, then push a version-matched tag such as `launcher-v1.1.7` to run `.github/workflows/release-launcher.yml`. The workflow publishes cross-platform installers and SHA-256 update archives to `/launcher/v2/self/`; the legacy Windows-only launcher feed at `/launcher/self/` is preserved. The cross-platform launcher uses the separate modpack feed at `/launcher/v2/`.
 
 ## Features
 
@@ -25,7 +25,7 @@ Install the .NET 8 SDK, then run from the repository root:
 dotnet build FabriFrogeLauncher/FabriFrogeLauncher/FabriFrogeLauncher.csproj -c Release
 ```
 
-Publish a modpack with `FabriFrogeLauncher/run-publish-build.bat`; that script changes only pack metadata and files, never the launcher update feed or launcher binaries.
+Publish a modpack with `FabriFrogeLauncher/run-publish-build.bat`. Cross-platform launcher builds read pack metadata from the isolated `/launcher/v2/` namespace. The publisher writes manifests and payloads there and leaves the legacy `/launcher/latest.json` feed and launcher self-update feed untouched. Release the launcher build that uses `/launcher/v2/latest.json` before distributing a pack through that feed.
 
 ## Microsoft sign-in setup
 

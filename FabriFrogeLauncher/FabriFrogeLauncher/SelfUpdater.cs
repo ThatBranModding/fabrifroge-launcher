@@ -15,7 +15,9 @@ namespace FabriFrogeLauncher;
 
 public static class SelfUpdater
 {
-    private const string LauncherLatestUrl = "https://files.fabrifroge.com/launcher/self/latest.json";
+    // Cross-platform releases use a separate self-update channel from the
+    // legacy Windows-only launcher at /launcher/self/latest.json.
+    private const string LauncherLatestUrl = "https://files.fabrifroge.com/launcher/v2/self/latest.json";
     private const string ApplyArg = "--apply-update";
 
     private static readonly string ApplyLogPath =

@@ -16,8 +16,8 @@ $SftpHost = "launcher@ftp.fabrifroge.com"
 # SSH/SFTP port
 $SshPort = 22
 
-$LauncherSelfPath = "/launcher/self"
-$LauncherPath     = "/launcher"
+$LauncherSelfPath = "/launcher/v2/self"
+$PackPath         = "/launcher/v2"
 
 $WinScpHostKey = "ssh-ed25519 255 jygYqLouvUiCQUTXy1r0EWmRXpoWSO/OHCPVwOBPiZg"
 
@@ -51,13 +51,11 @@ $LauncherProject = Join-Path $RepoRoot "FabriFrogeLauncher\FabriFrogeLauncher.cs
 # Public base URL (no trailing slash)
 $PublicBaseUrl = "https://files.fabrifroge.com"
 
-# Local inputs for modpack-only publishing. Override with environment variables if needed.
+# Local inputs for modpack-only publishing. The payload directory is the SHA-256
+# tree itself (prefix/hash subdirectories), not a per-pack-version directory.
+# Override with environment variables if needed.
 $PackManifestDir = if ($env:FABRIFROGE_PACK_MANIFEST_DIR) { $env:FABRIFROGE_PACK_MANIFEST_DIR } else { "F:\neofroge stuff\FF LAUNCHER\FabriFrogeBuild\output\manifests" }
 $PackFilesSha256Dir = if ($env:FABRIFROGE_PACK_FILES_DIR) { $env:FABRIFROGE_PACK_FILES_DIR } else { "F:\neofroge stuff\FF LAUNCHER\FabriFrogeBuild\output\files\sha256" }
-
-# Where the launcher self update manifests live (URL paths)
-$LauncherSelfPath = "/launcher/self"
-$LauncherPath     = "/launcher"
 
 # Optional: Cloudflare purge
 $EnableCloudflarePurge = $false
@@ -67,5 +65,5 @@ $CloudflareApiToken = $env:FABRIFROGE_CLOUDFLARE_API_TOKEN
 
 # JSON URLs that may need cache purging.
 $PurgeUrls = @(
-  "$PublicBaseUrl$LauncherPath/latest.json"
+  "$PublicBaseUrl$PackPath/latest.json"
 )

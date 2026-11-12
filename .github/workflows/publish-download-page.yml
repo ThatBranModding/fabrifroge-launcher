@@ -46,9 +46,7 @@ jobs:
           trap 'rm -f "$batch_file" "$output_file"' EXIT
           printf '%s\n' \
             "put \"docs/download/index.html\" \"$remote_download/index.html\"" \
-            "put \"docs/download/latest.json\" \"$remote_download/latest.json\"" \
-            "ls -l \"$remote_download/index.html\"" \
-            "ls -l \"$remote_download/latest.json\"" > "$batch_file"
+            "ls -l \"$remote_download/index.html\"" > "$batch_file"
           if ! sshpass -e sftp -P 22 \
             -o PreferredAuthentications=password \
             -o PubkeyAuthentication=no \
@@ -65,4 +63,3 @@ jobs:
             exit 1
           fi
           grep -Fq "$remote_download/index.html" "$output_file"
-          grep -Fq "$remote_download/latest.json" "$output_file"
