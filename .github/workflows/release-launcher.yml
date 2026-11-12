@@ -179,6 +179,7 @@ jobs:
           expected = {p.name: p.stat().st_size for p in root.glob("FabriFrogeLauncher-*")}
           for name in ("SHA256SUMS.txt", "launcher-self-latest.json"):
               expected[name] = (root / name).stat().st_size
+          expected["download:latest.json"] = (root / "launcher-self-latest.json").stat().st_size
           legacy = pathlib.Path("FabriFrogeLauncher/release/legacy/launcher-self-latest.json")
           expected["legacy:latest.json"] = legacy.stat().st_size
           actual = {}
@@ -192,8 +193,13 @@ jobs:
                   continue
               path = pathlib.PurePosixPath(" ".join(fields[8:]))
               name = path.name
-              if name == "latest.json" and "/launcher/self/" in str(path):
+              rendered_path = str(path)
+              if rendered_path.endswith("launcher/self/latest.json"):
                   actual["legacy:latest.json"] = size
+              elif rendered_path.endswith("launcher/v2/self/latest.json"):
+                  actual["launcher-self-latest.json"] = size
+              elif rendered_path.endswith("www/download/latest.json"):
+                  actual["download:latest.json"] = size
               elif name in expected:
                   actual[name] = size
           for name, size in expected.items():
