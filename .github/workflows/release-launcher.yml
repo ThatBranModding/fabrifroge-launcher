@@ -132,6 +132,7 @@ jobs:
           trap 'rm -f "$batch_file"' EXIT
           printf '%s\n' \
             'cd "/C:/Users/Branserver/Downloads/nginx-1.26.3/www/files"' \
+            '-mkdir ../download' \
             '-mkdir launcher' \
             '-mkdir launcher/self' \
             '-mkdir launcher/self/builds' \
@@ -146,7 +147,8 @@ jobs:
           done
           printf '%s\n' \
             'put artifacts/SHA256SUMS.txt launcher/self/SHA256SUMS.txt' \
-            'put artifacts/launcher-self-latest.json launcher/self/latest.json' >> "$batch_file"
+            'put artifacts/launcher-self-latest.json launcher/self/latest.json' \
+            'put artifacts/launcher-self-latest.json ../download/latest.json' >> "$batch_file"
           sshpass -e sftp -P 22 \
             -o PreferredAuthentications=password \
             -o PubkeyAuthentication=no \

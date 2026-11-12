@@ -1,0 +1,56 @@
+name: Publish launcher download page
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/download/**"
+      - ".github/workflows/publish-download-page.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload download page to homeserver
+        env:
+          SSHPASS: ${{ secrets.FABRIFROGE_SFTP_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SSHPASS:-}" ]]; then
+            echo "Missing repository secret FABRIFROGE_SFTP_PASSWORD" >&2
+            exit 1
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          ssh-keyscan -t ed25519 ftp.fabrifroge.com > "$HOME/.ssh/host-key-scan" 2>/dev/null
+          actual_fingerprint="$(ssh-keygen -lf "$HOME/.ssh/host-key-scan" -E sha256 | awk '{print $2}' | sed 's/^SHA256://' | sed 's/=*$//')"
+          expected_fingerprint='jygYqLouvUiCQUTXy1r0EWmRXpoWSO/OHCPVwOBPiZg'
+          if [[ "$actual_fingerprint" != "$expected_fingerprint" ]]; then
+            echo "SFTP host key does not match the pinned fingerprint" >&2
+            exit 1
+          fi
+          cp "$HOME/.ssh/host-key-scan" "$HOME/.ssh/known_hosts"
+          rm "$HOME/.ssh/host-key-scan"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          batch_file="$(mktemp)"
+          trap 'rm -f "$batch_file"' EXIT
+          printf '%s\n' \
+            'cd "/C:/Users/Branserver/Downloads/nginx-1.26.3/www"' \
+            '-mkdir download' \
+            'put "docs/download/index.html" "download/index.html"' \
+            'put "docs/download/latest.json" "download/latest.json"' > "$batch_file"
+          sshpass -e sftp -P 22 \
+            -o PreferredAuthentications=password \
+            -o PubkeyAuthentication=no \
+            -o BatchMode=no \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            launcher@ftp.fabrifroge.com < "$batch_file"
