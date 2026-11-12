@@ -1,0 +1,70 @@
+name: Restore Windows launcher feed
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "FabriFrogeLauncher/release/legacy/launcher-self-latest.json"
+      - ".github/workflows/restore-legacy-launcher-feed.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore the legacy Windows-only update feed
+        env:
+          SSHPASS: ${{ secrets.FABRIFROGE_SFTP_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SSHPASS:-}" ]]; then
+            echo "Missing repository secret FABRIFROGE_SFTP_PASSWORD" >&2
+            exit 1
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          ssh-keyscan -t ed25519 ftp.fabrifroge.com > "$HOME/.ssh/known_hosts" 2>/dev/null
+          actual_fingerprint="$(ssh-keygen -lf "$HOME/.ssh/known_hosts" -E sha256 | awk '{print $2}' | sed 's/^SHA256://' | sed 's/=*$//')"
+          expected_fingerprint='jygYqLouvUiCQUTXy1r0EWmRXpoWSO/OHCPVwOBPiZg'
+          if [[ "$actual_fingerprint" != "$expected_fingerprint" ]]; then
+            echo "SFTP host key does not match the pinned fingerprint" >&2
+            exit 1
+          fi
+          chmod 600 "$HOME/.ssh/known_hosts"
+          batch_file="$(mktemp)"
+          trap 'rm -f "$batch_file"' EXIT
+          printf '%s\n' \
+            'cd "/C:/Users/Branserver/Downloads/nginx-1.26.3/www/files"' \
+            '-mkdir launcher' \
+            '-mkdir launcher/self' \
+            'put "FabriFrogeLauncher/release/legacy/launcher-self-latest.json" "launcher/self/latest.json"' > "$batch_file"
+          sshpass -e sftp -b "$batch_file" -P 22 \
+            -o PreferredAuthentications=password \
+            -o PubkeyAuthentication=no \
+            -o BatchMode=no \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            launcher@ftp.fabrifroge.com
+          curl --fail --silent --show-error \
+            -H 'Cache-Control: no-cache' \
+            "https://files.fabrifroge.com/launcher/self/latest.json?restore=${GITHUB_RUN_ID}" \
+            -o "$RUNNER_TEMP/legacy-latest.json"
+          python - "$RUNNER_TEMP/legacy-latest.json" <<'PY'
+          import json, pathlib, sys
+          data = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          expected = {
+              "version": "1.1.2",
+              "url": "https://files.fabrifroge.com/launcher/self/builds/FabriFrogeLauncher-1.1.2.zip",
+              "sha256": "aa8be39ca13b9e718a050c706a955cabe63f3e0402e94758fb28964a8c57f78d",
+          }
+          if any(data.get(key) != value for key, value in expected.items()):
+              raise SystemExit(f"Legacy feed verification failed: {data}")
+          print("Verified the legacy Windows-only feed is still at version 1.1.2.")
+          PY

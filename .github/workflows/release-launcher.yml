@@ -67,6 +67,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -157,4 +158,5 @@ jobs:
             -o BatchMode=no \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            launcher@ftp.fabrifroge.com < "$batch_file"
+            -b "$batch_file" \
+            launcher@ftp.fabrifroge.com
