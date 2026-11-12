@@ -147,4 +147,10 @@ jobs:
           printf '%s\n' \
             'put artifacts/SHA256SUMS.txt launcher/self/SHA256SUMS.txt' \
             'put artifacts/launcher-self-latest.json launcher/self/latest.json' >> "$batch_file"
-          sshpass -e sftp -P 22 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -b "$batch_file" launcher@ftp.fabrifroge.com
+sshpass -e sftp -P 22 \
+  -o PreferredAuthentications=keyboard-interactive,password \
+  -o PubkeyAuthentication=no \
+  -o StrictHostKeyChecking=yes \
+  -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+  -b "$batch_file" \
+  launcher@ftp.fabrifroge.com
