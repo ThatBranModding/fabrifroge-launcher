@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 using CmlLib.Core.Auth;
 using CmlLib.Core.Auth.Microsoft;
 using Microsoft.Identity.Client;
+using XboxAuthNet.Game;
+using XboxAuthNet.Game.Authenticators;
 using XboxAuthNet.Game.Msal;
 using XboxAuthNet.Game.Msal.OAuth;
 
@@ -16,30 +18,43 @@ namespace FabriFrogeLauncher;
 
 public static class AuthService
 {
+    private const string MicrosoftClientId = "29bba88a-ff97-4db8-ae02-574e23ed7521";
     private const string SessionFileName = "ms_session.json";
 
     // Optional debug toggle file (place inside installRoot)
     private const string AuthDebugToggleFile = "enable_auth_debug.txt";
     private const string AuthDebugReportFile = "auth_debug_report.txt";
 
-    private static string GetMicrosoftClientId(string? configuredClientId)
+    private static async Task<JELoginHandler> BuildLoginHandlerAsync()
     {
-        var clientId = Environment.GetEnvironmentVariable("FABRIFROGE_MSAL_CLIENT_ID") ?? configuredClientId;
-        if (string.IsNullOrWhiteSpace(clientId))
-            throw new InvalidOperationException("Set the Microsoft app client ID in Settings before signing in. Register a public client app for personal Microsoft accounts and have its ID allow-listed for Minecraft Xbox authentication.");
-        if (!Guid.TryParse(clientId.Trim(), out _))
-            throw new InvalidOperationException("The Microsoft app client ID must be the GUID shown as Application (client) ID in the Microsoft app registration.");
-        return clientId.Trim();
+        var msal = await MsalClientHelper.BuildApplicationWithCache(MicrosoftClientId).ConfigureAwait(false);
+        var oauthProvider = new SystemBrowserMsalProvider(msal);
+        return new JELoginHandlerBuilder()
+            .WithOAuthProvider(oauthProvider)
+            .Build();
     }
 
-    private static async Task<JELoginHandler> BuildLoginHandlerAsync(
-        string? configuredClientId,
-        Func<DeviceCodeResult, Task>? deviceCodeCallback = null)
+    // Make MSAL use the user's default browser on Windows, macOS, and Linux.
+    private sealed class SystemBrowserMsalProvider : IAuthenticationProvider
     {
-        var msal = await MsalClientHelper.BuildApplicationWithCache(GetMicrosoftClientId(configuredClientId)).ConfigureAwait(false);
-        return new JELoginHandlerBuilder()
-            .WithOAuthProvider(new MsalDeviceCodeProvider(msal, deviceCodeCallback ?? (_ => Task.CompletedTask)))
-            .Build();
+        private readonly MsalOAuthBuilder _builder;
+        private readonly MsalCodeFlowProvider _defaultProvider;
+
+        public SystemBrowserMsalProvider(IPublicClientApplication app)
+        {
+            _builder = new MsalOAuthBuilder(app);
+            _defaultProvider = new MsalCodeFlowProvider(app);
+        }
+
+        private IAuthenticator InteractiveInSystemBrowser() =>
+            _builder.Interactive(parameters => parameters.WithUseEmbeddedWebView(false));
+
+        public IAuthenticator Authenticate() => InteractiveInSystemBrowser();
+        public IAuthenticator AuthenticateInteractively() => InteractiveInSystemBrowser();
+        public IAuthenticator AuthenticateSilently() => _builder.Silent();
+        public ISessionValidator CreateSessionValidator() => _defaultProvider.CreateSessionValidator();
+        public IAuthenticator ClearSession() => _builder.ClearSession();
+        public IAuthenticator Signout() => _builder.ClearSession();
     }
 
     // ---- Paths ----
@@ -247,9 +262,7 @@ public static class AuthService
     public static async Task<MSession> SignInMicrosoftAsync(
         string installRoot,
         Action<string> log,
-        CancellationToken ct,
-        Func<DeviceCodeResult, Task>? deviceCodeCallback = null,
-        string? microsoftClientId = null)
+        CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -263,7 +276,7 @@ public static class AuthService
         try
         {
             log("Starting Microsoft sign-in...");
-            return await TrySignInInternalAsync(installRoot, log, ct, debug, allowRecovery: true, deviceCodeCallback, microsoftClientId).ConfigureAwait(false);
+            return await TrySignInInternalAsync(installRoot, log, ct, debug, allowRecovery: true).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -289,13 +302,13 @@ public static class AuthService
     /// <summary>
     /// Signs out launcher-owned cached session file(s) and library/MSAL auth state.
     /// </summary>
-    public static async Task SignOutAsync(string installRoot, Action<string> log, string? microsoftClientId = null)
+    public static async Task SignOutAsync(string installRoot, Action<string> log)
     {
         ClearSavedSession(installRoot, log);
 
         try
         {
-            var loginHandler = await BuildLoginHandlerAsync(microsoftClientId).ConfigureAwait(false);
+            var loginHandler = await BuildLoginHandlerAsync().ConfigureAwait(false);
             await loginHandler.Signout().ConfigureAwait(false);
             log("Microsoft library signout OK.");
         }
@@ -311,9 +324,7 @@ public static class AuthService
     public static async Task<MSession> SwapAccountsAsync(
         string installRoot,
         Action<string> log,
-        CancellationToken ct,
-        Func<DeviceCodeResult, Task>? deviceCodeCallback = null,
-        string? microsoftClientId = null)
+        CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -331,7 +342,7 @@ public static class AuthService
         try
         {
             log("Swap Accounts: signing out library auth state...");
-            var loginHandler = await BuildLoginHandlerAsync(microsoftClientId, deviceCodeCallback).ConfigureAwait(false);
+            var loginHandler = await BuildLoginHandlerAsync().ConfigureAwait(false);
 
             try
             {
@@ -379,11 +390,9 @@ public static class AuthService
         Action<string> log,
         CancellationToken ct,
         bool debug,
-        bool allowRecovery,
-        Func<DeviceCodeResult, Task>? deviceCodeCallback,
-        string? microsoftClientId)
+        bool allowRecovery)
     {
-        var loginHandler = await BuildLoginHandlerAsync(microsoftClientId, deviceCodeCallback).ConfigureAwait(false);
+        var loginHandler = await BuildLoginHandlerAsync().ConfigureAwait(false);
 
         try
         {
@@ -407,12 +416,12 @@ public static class AuthService
             log("Microsoft sign-in: cached auth appears expired/bad. Clearing saved auth and retrying with interactive sign-in...");
             if (debug) AppendAuthDebugReport(installRoot, $"Recoverable auth expiry detected: {ex}");
 
-            await ResetLibraryAndLauncherAuthStateAsync(installRoot, log, debug, microsoftClientId).ConfigureAwait(false);
+            await ResetLibraryAndLauncherAuthStateAsync(installRoot, log, debug).ConfigureAwait(false);
 
             ct.ThrowIfCancellationRequested();
 
             log("Microsoft sign-in: starting forced interactive sign-in...");
-            var retryHandler = await BuildLoginHandlerAsync(microsoftClientId, deviceCodeCallback).ConfigureAwait(false);
+            var retryHandler = await BuildLoginHandlerAsync().ConfigureAwait(false);
             var retrySession = await retryHandler.AuthenticateInteractively(ct).ConfigureAwait(false);
 
             ct.ThrowIfCancellationRequested();
@@ -432,14 +441,13 @@ public static class AuthService
     private static async Task ResetLibraryAndLauncherAuthStateAsync(
         string installRoot,
         Action<string> log,
-        bool debug,
-        string? microsoftClientId)
+        bool debug)
     {
         ClearSavedSession(installRoot, log);
 
         try
         {
-            var loginHandler = await BuildLoginHandlerAsync(microsoftClientId).ConfigureAwait(false);
+            var loginHandler = await BuildLoginHandlerAsync().ConfigureAwait(false);
             await loginHandler.Signout().ConfigureAwait(false);
             log("Auth recovery: library signout OK.");
             if (debug) AppendAuthDebugReport(installRoot, "Auth recovery: library signout OK.");

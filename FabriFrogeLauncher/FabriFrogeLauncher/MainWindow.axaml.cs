@@ -12,7 +12,6 @@ using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using CmlLib.Core.Auth;
-using Microsoft.Identity.Client;
 
 namespace FabriFrogeLauncher;
 
@@ -39,7 +38,6 @@ public partial class MainWindow : Window
         _settings = LauncherSettings.Load(Log);
         InstallPath.Text = _settings.InstallDirectory ?? DefaultInstallRoot();
         RamInput.Value = _settings.RamMb;
-        MicrosoftClientIdInput.Text = _settings.MicrosoftClientId ?? Environment.GetEnvironmentVariable("FABRIFROGE_MSAL_CLIENT_ID");
         Console.IsVisible = false;
         _backgroundPath = Path.Combine(AppContext.BaseDirectory, "Assets", "LauncherBackground", "Lapras", "lapras_day.webp");
         Opened += (_, _) => UpdateBackgroundPlayback();
@@ -225,58 +223,16 @@ public partial class MainWindow : Window
         catch (HttpRequestException) { valid = true; }
         if (valid) return current;
         Log("Microsoft session expired; starting sign-in again.");
-        _session = await AuthService.SignInMicrosoftAsync(Root, Log, ct, ShowDeviceCodeAsync, _settings.MicrosoftClientId);
+        Log("Opening the default browser for Microsoft sign-in...");
+        _session = await AuthService.SignInMicrosoftAsync(Root, Log, ct);
         AccountLabel.Text = _session.Username;
         return _session;
     }
-    private async void SignIn_Click(object? s, RoutedEventArgs e) => await RunAsync("Microsoft sign in", async ct => { _session = await AuthService.SignInMicrosoftAsync(Root, Log, ct, ShowDeviceCodeAsync, _settings.MicrosoftClientId); AccountLabel.Text = _session.Username; });
-    private async void SignOut_Click(object? s, RoutedEventArgs e) => await RunAsync("Signing out", async _ => { await AuthService.SignOutAsync(Root, Log, _settings.MicrosoftClientId); _session = null; AccountLabel.Text = "Playing offline"; });
-    private async void Switch_Click(object? s, RoutedEventArgs e) => await RunAsync("Switching account", async ct => { _session = await AuthService.SwapAccountsAsync(Root, Log, ct, ShowDeviceCodeAsync, _settings.MicrosoftClientId); AccountLabel.Text = _session.Username; });
-    private Task ShowDeviceCodeAsync(DeviceCodeResult result) => Dispatcher.UIThread.InvokeAsync(async () =>
-    {
-        Log($"Microsoft sign-in code: {result.UserCode}");
-        var codeBox = new TextBox
-        {
-            Text = result.UserCode,
-            IsReadOnly = true,
-            FontSize = 24,
-            FontWeight = Avalonia.Media.FontWeight.Bold,
-            HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center,
-            Padding = new Thickness(12),
-            Margin = new Thickness(0, 8, 0, 8)
-        };
-        var dialog = new Window
-        {
-            Title = "Microsoft sign-in",
-            Width = 410,
-            SizeToContent = SizeToContent.Height,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            CanResize = false
-        };
-        var openButton = new Button { Content = "Open Microsoft sign-in", MinWidth = 160 };
-        var doneButton = new Button { Content = "Continue", MinWidth = 100 };
-        openButton.Click += (_, _) =>
-        {
-            try { Process.Start(new ProcessStartInfo(result.VerificationUrl) { UseShellExecute = true }); }
-            catch (Exception ex) { Log($"Could not open sign-in page: {ex.Message}"); }
-        };
-        doneButton.Click += (_, _) => dialog.Close();
-        dialog.Content = new StackPanel
-        {
-            Margin = new Thickness(20),
-            Spacing = 10,
-            Children =
-            {
-                new TextBlock { Text = "Enter this code in your browser to connect your Microsoft account.", TextWrapping = Avalonia.Media.TextWrapping.Wrap },
-                codeBox,
-                new TextBlock { Text = result.VerificationUrl, TextWrapping = Avalonia.Media.TextWrapping.Wrap, FontSize = 12 },
-                new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Spacing = 8, Children = { openButton, doneButton } }
-            }
-        };
-        await dialog.ShowDialog(this);
-    });
-    private async void SaveSettings_Click(object? s, RoutedEventArgs e) { _settings.InstallDirectory = Root; _settings.RamMb = (int)(RamInput.Value ?? 7168); _settings.MicrosoftClientId = MicrosoftClientIdInput.Text?.Trim(); _settings.Save(Log); Status.Text = string.IsNullOrWhiteSpace(_settings.MicrosoftClientId) ? "Settings saved; Microsoft app ID not set" : "Settings saved"; await Task.CompletedTask; }
-    private void Ram_Changed(object? s, NumericUpDownValueChangedEventArgs e) { _settings.RamMb = (int)(e.NewValue ?? 7168); _settings.MicrosoftClientId = MicrosoftClientIdInput.Text?.Trim(); _settings.Save(Log); }
+    private async void SignIn_Click(object? s, RoutedEventArgs e) => await RunAsync("Microsoft sign in", async ct => { Log("Opening the default browser for Microsoft sign-in..."); _session = await AuthService.SignInMicrosoftAsync(Root, Log, ct); AccountLabel.Text = _session.Username; });
+    private async void SignOut_Click(object? s, RoutedEventArgs e) => await RunAsync("Signing out", async _ => { await AuthService.SignOutAsync(Root, Log); _session = null; AccountLabel.Text = "Playing offline"; });
+    private async void Switch_Click(object? s, RoutedEventArgs e) => await RunAsync("Switching account", async ct => { Log("Opening the default browser for Microsoft sign-in..."); _session = await AuthService.SwapAccountsAsync(Root, Log, ct); AccountLabel.Text = _session.Username; });
+    private async void SaveSettings_Click(object? s, RoutedEventArgs e) { _settings.InstallDirectory = Root; _settings.RamMb = (int)(RamInput.Value ?? 7168); _settings.Save(Log); Status.Text = "Settings saved"; await Task.CompletedTask; }
+    private void Ram_Changed(object? s, NumericUpDownValueChangedEventArgs e) { _settings.RamMb = (int)(e.NewValue ?? 7168); _settings.Save(Log); }
     private async void Browse_Click(object? s, RoutedEventArgs e)
     {
         var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = "Choose FabriFroge install folder", AllowMultiple = false });

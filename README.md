@@ -33,7 +33,7 @@ The GitHub Actions workflow at `.github/workflows/publish-fabrifroge-launcher.ym
 
 ## Microsoft sign-in setup
 
-This desktop launcher uses the MSAL device-code flow on all supported operating systems. Configure a Microsoft Entra public-client app for personal Microsoft accounts, enable public-client flows, and request Minecraft Xbox authentication approval for its Application (client) ID. Do not create a client secret for the desktop app. Enter the approved client ID in the launcher's settings on each OS.
+This desktop launcher uses MSAL interactive sign-in through the operating system's default browser on Windows, macOS, and Linux. Its public client ID is built into the launcher (`29bba88a-ff97-4db8-ae02-574e23ed7521`), so players do not need to configure it. The publisher must configure the Entra app for personal Microsoft accounts, enable public-client flows, add `http://localhost` as the native redirect URI, and request Minecraft Xbox authentication allowlisting. Do not create a client secret for this desktop app. Microsoft sign-in can succeed while Minecraft authentication remains unavailable until allowlisting is approved.
 
 See the [CmlLib MSAL client-ID guide](https://cmllib.github.io/CmlLib.Core-wiki/en/auth.microsoft/xboxauthnet.game.msal/clientid/) and [Minecraft App ID review guidance](https://help.minecraft.net/hc/en-us/articles/16254801392141).
 

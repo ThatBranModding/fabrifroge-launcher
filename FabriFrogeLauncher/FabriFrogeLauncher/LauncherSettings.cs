@@ -8,7 +8,6 @@ public sealed class LauncherSettings
 {
     public int RamMb { get; set; } = 8192;
     public string? InstallDirectory { get; set; }
-    public string? MicrosoftClientId { get; set; }
 
     private const string FileName = "launcher_settings.json";
 

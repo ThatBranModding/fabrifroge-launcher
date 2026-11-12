@@ -96,8 +96,6 @@
                   <Border Height="1" Background="#72899A" Margin="4,3"/>
                   <TextBlock Text="Memory allocation" Foreground="White" Margin="5,3,0,0"/>
                   <NumericUpDown x:Name="RamInput" Minimum="2048" Maximum="65536" Increment="1024" Value="7168" ValueChanged="Ram_Changed" Height="30"/>
-                  <TextBlock Text="Microsoft app client ID (public)" Foreground="White" Margin="5,3,0,0"/>
-                  <TextBox x:Name="MicrosoftClientIdInput" Watermark="Application (client) ID" Height="30"/>
                   <Button Content="Save settings" Click="SaveSettings_Click"/>
                 </StackPanel>
                 </ScrollViewer>
