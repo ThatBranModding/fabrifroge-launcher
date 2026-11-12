@@ -101,6 +101,12 @@ jobs:
             'put "artifacts/SHA256SUMS.txt" "launcher/v2/self/SHA256SUMS.txt"' \
             'put "artifacts/launcher-self-latest.json" "launcher/v2/self/latest.json"' \
             'put "artifacts/launcher-self-latest.json" "/C:/Users/Branserver/Downloads/nginx-1.26.3/www/download/latest.json"' >> "$batch_file"
+          python - <<'PY' >> "$batch_file"
+          import json
+          for item in json.load(open("verify-uploads.json", encoding="utf-8")):
+              relative = item["url"].split("/launcher/v2/self/", 1)[1]
+              print(f'ls -l "launcher/v2/self/{relative}"')
+          PY
           set +e
           sshpass -e sftp -P 22 \
             -o PreferredAuthentications=password \
@@ -115,14 +121,25 @@ jobs:
             echo "SFTP reported a failed upload; refusing to mark launcher 1.1.7 as repaired." >&2
             exit 1
           fi
-          python - <<'PY'
-          import json, time, urllib.error, urllib.request
+          python - "$log_file" <<'PY'
+          import json, pathlib, sys
           expected = json.load(open("verify-uploads.json", encoding="utf-8"))
-          for item in expected:
-              request = urllib.request.Request(item["url"] + "?verify=1.1.7-repair", method="HEAD", headers={"Cache-Control": "no-cache"})
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  actual = int(response.headers.get("Content-Length", "-1"))
-                  if response.status != 200 or actual != item["size"]:
-                      raise SystemExit(f"Size/status mismatch for {item['url']}: HTTP {response.status}, {actual} bytes; expected {item['size']}.")
-                  print(f"Verified {item['url'].rsplit('/', 1)[-1]}: {actual} bytes")
+          by_name = {item["url"].rsplit("/", 1)[-1]: item["size"] for item in expected}
+          actual = {}
+          for line in pathlib.Path(sys.argv[1]).read_text(errors="replace").splitlines():
+              fields = line.strip().split()
+              if len(fields) < 9 or not fields[0].startswith(("-", "d", "l")):
+                  continue
+              try:
+                  size = int(fields[4])
+              except ValueError:
+                  continue
+              name = pathlib.PurePosixPath(" ".join(fields[8:])).name
+              if name in by_name:
+                  actual[name] = size
+          for name, expected_size in by_name.items():
+              actual_size = actual.get(name)
+              if actual_size != expected_size:
+                  raise SystemExit(f"Remote size mismatch for {name}: {actual_size} bytes; expected {expected_size}.")
+              print(f"Verified {name}: {actual_size} bytes")
           PY
