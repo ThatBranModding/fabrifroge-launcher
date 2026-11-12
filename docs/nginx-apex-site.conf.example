@@ -1,0 +1,49 @@
+# Add these server blocks inside nginx.conf's http {} block.
+# Replace the certificate paths with the paths created for fabrifroge.com.
+# The certificate must include fabrifroge.com (and www.fabrifroge.com if enabled).
+
+# Redirect apex HTTP to HTTPS.
+server {
+    listen 80;
+    server_name fabrifroge.com;
+    return 301 https://fabrifroge.com$request_uri;
+}
+
+# Optional HTTP redirect for www. Use only if www.fabrifroge.com has a DNS record.
+server {
+    listen 80;
+    server_name www.fabrifroge.com;
+    return 301 https://fabrifroge.com$request_uri;
+}
+
+# Public static homepage and launcher download page.
+server {
+    listen 443 ssl;
+    server_name fabrifroge.com;
+
+    ssl_certificate     C:/PATH/TO/fabrifroge.com/fullchain.pem;
+    ssl_certificate_key C:/PATH/TO/fabrifroge.com/privkey.pem;
+
+    root C:/Users/Branserver/Downloads/nginx-1.26.3/www;
+    index index.html;
+
+    location = /download {
+        return 301 /download/;
+    }
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}
+
+# Optional www alias. Use only if the certificate covers www.fabrifroge.com
+# and DNS for www points to this Nginx server.
+server {
+    listen 443 ssl;
+    server_name www.fabrifroge.com;
+
+    ssl_certificate     C:/PATH/TO/fabrifroge.com/fullchain.pem;
+    ssl_certificate_key C:/PATH/TO/fabrifroge.com/privkey.pem;
+
+    return 301 https://fabrifroge.com$request_uri;
+}
