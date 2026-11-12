@@ -146,17 +146,58 @@ jobs:
               *) destination='launcher/v2/self/builds/' ;;
             esac
             printf 'put "%s" "%s"\n' "$package" "$destination" >> "$batch_file"
+            printf 'ls -l "%s%s"\n' "$destination" "${package##*/}" >> "$batch_file"
           done
           printf '%s\n' \
             'put FabriFrogeLauncher/release/legacy/launcher-self-latest.json launcher/self/latest.json' \
             'put artifacts/SHA256SUMS.txt launcher/v2/self/SHA256SUMS.txt' \
             'put artifacts/launcher-self-latest.json launcher/v2/self/latest.json' \
-            'put artifacts/launcher-self-latest.json "/C:/Users/Branserver/Downloads/nginx-1.26.3/www/download/latest.json"' >> "$batch_file"
+            'put artifacts/launcher-self-latest.json "/C:/Users/Branserver/Downloads/nginx-1.26.3/www/download/latest.json"' \
+            'ls -l launcher/self/latest.json' \
+            'ls -l launcher/v2/self/SHA256SUMS.txt' \
+            'ls -l launcher/v2/self/latest.json' \
+            'ls -l "/C:/Users/Branserver/Downloads/nginx-1.26.3/www/download/latest.json"' >> "$batch_file"
+          log_file="$RUNNER_TEMP/sftp-release.log"
+          trap 'rm -f "$batch_file"' EXIT
+          set +e
           sshpass -e sftp -P 22 \
             -o PreferredAuthentications=password \
             -o PubkeyAuthentication=no \
             -o BatchMode=no \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            -b "$batch_file" \
-            launcher@ftp.fabrifroge.com
+            launcher@ftp.fabrifroge.com < "$batch_file" 2>&1 | tee "$log_file"
+          sftp_status=${PIPESTATUS[0]}
+          set -e
+          if [[ "$sftp_status" -ne 0 ]] || grep -Eiq 'write remote .*Failure|stat .*No such file|Permission denied|Connection closed|Couldn.t' "$log_file"; then
+            echo "SFTP reported a failed launcher upload." >&2
+            exit 1
+          fi
+          python - "$log_file" <<'PY'
+          import pathlib, sys
+          root = pathlib.Path("artifacts")
+          expected = {p.name: p.stat().st_size for p in root.glob("FabriFrogeLauncher-*")}
+          for name in ("SHA256SUMS.txt", "launcher-self-latest.json"):
+              expected[name] = (root / name).stat().st_size
+          legacy = pathlib.Path("FabriFrogeLauncher/release/legacy/launcher-self-latest.json")
+          expected["legacy:latest.json"] = legacy.stat().st_size
+          actual = {}
+          for line in pathlib.Path(sys.argv[1]).read_text(errors="replace").splitlines():
+              fields = line.strip().split()
+              if len(fields) < 9 or not fields[0].startswith(("-", "d", "l")):
+                  continue
+              try:
+                  size = int(fields[4])
+              except ValueError:
+                  continue
+              path = pathlib.PurePosixPath(" ".join(fields[8:]))
+              name = path.name
+              if name == "latest.json" and "/launcher/self/" in str(path):
+                  actual["legacy:latest.json"] = size
+              elif name in expected:
+                  actual[name] = size
+          for name, size in expected.items():
+              if actual.get(name) != size:
+                  raise SystemExit(f"Remote size mismatch for {name}: {actual.get(name)} bytes; expected {size}.")
+              print(f"Verified {name}: {size} bytes")
+          PY
