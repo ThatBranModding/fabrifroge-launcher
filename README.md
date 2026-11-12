@@ -6,7 +6,7 @@ FabriFroge Launcher is an Avalonia/.NET 8 desktop launcher for the FabriFroge Mi
 
 Launcher releases create Windows `.exe` installers, macOS `.dmg` installers, and Linux `.deb` installers for x64 and ARM64, plus portable ZIP/TAR.GZ archives for automatic updates. The macOS packages are unsigned until signed and notarized by the publisher.
 
-Add the rotated homeserver password as the GitHub Actions repository secret `FABRIFROGE_SFTP_PASSWORD`, then push a version-matched tag such as `launcher-v1.1.4` to run `.github/workflows/release-launcher.yml`. The workflow publishes per-platform installers and SHA-256 update archives to the homeserver. The launcher update feed is separate from the modpack feed.
+Add the rotated homeserver password as the GitHub Actions repository secret `FABRIFROGE_SFTP_PASSWORD`, then push a version-matched tag such as `launcher-v1.1.5` to run `.github/workflows/release-launcher.yml`. The workflow publishes per-platform installers and SHA-256 update archives to the homeserver. The launcher update feed is separate from the modpack feed.
 
 ## Features
 
