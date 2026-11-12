@@ -17,6 +17,8 @@ namespace FabriFrogeLauncher;
 
 public partial class MainWindow : Window
 {
+    private enum MainAction { Checking, Install, UpdateLauncher, UpdatePack, Play }
+
     // Keep the cross-platform launcher on its own pack feed. The legacy
     // launcher continues to use /launcher/latest.json and is not updated by
     // publishing a v2 modpack.
@@ -25,6 +27,14 @@ public partial class MainWindow : Window
     private LauncherSettings _settings = new();
     private MSession? _session;
     private PackManifest? _manifest;
+    private SelfUpdater.LauncherPackage? _launcherUpdatePackage;
+    private string? _launcherUpdateVersion;
+    private MainAction _mainAction = MainAction.Checking;
+    private bool _startupChecksComplete;
+    private bool _packStatusKnown;
+    private bool _packInstalled;
+    private bool _packUpdateAvailable;
+    private bool _isBusy;
     private CancellationTokenSource _operation = new();
     private readonly WebpBackgroundPlayer _backgroundPlayer = new();
     private WriteableBitmap? _backgroundBitmap;
@@ -87,23 +97,42 @@ public partial class MainWindow : Window
 
     private async Task InitializeAsync()
     {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             var latest = await Net.GetJsonAsync<LatestInfo>(_http, LatestUrl, cts.Token);
             if (!string.IsNullOrWhiteSpace(latest.ManifestUrl))
                 _manifest = await Net.GetJsonAsync<PackManifest>(_http, latest.ManifestUrl, cts.Token);
             else if (!string.IsNullOrWhiteSpace(latest.PackId))
                 _manifest = new PackManifest { PackId = latest.PackId, Version = latest.LatestVersion };
-            VersionLabel.Text = $"FabriFroge Cobblemon {latest.LatestVersion}";
-            LatestVersion.Text = latest.LatestVersion;
             RefreshVersion();
+        }
+        catch (Exception ex)
+        {
+            _packStatusKnown = false;
+            Log($"Modpack startup check failed: {ex.Message}");
+            Status.Text = "Modpack information unavailable";
+        }
+
+        try
+        {
             _session = AuthService.TryLoadSession(Root, Log);
             AccountLabel.Text = _session?.Username ?? "Playing offline";
-            try { await CheckLauncherUpdateAsync(false); } catch (Exception ex) { Log($"Launcher update check failed: {ex.Message}"); }
-            await AutoCheckPackAsync();
         }
-        catch (Exception ex) { Log($"Startup check: {ex.Message}"); Status.Text = "Ready (pack info unavailable)"; }
+        catch (Exception ex) { Log($"Account startup check failed: {ex.Message}"); }
+
+        try { await CheckLauncherUpdateAsync(false, cts.Token); }
+        catch (Exception ex) { Log($"Launcher update check failed: {ex.Message}"); }
+
+        try { await AutoCheckPackAsync(cts.Token); }
+        catch (Exception ex)
+        {
+            _packStatusKnown = false;
+            Log($"Modpack update check failed: {ex.Message}");
+        }
+        _startupChecksComplete = true;
+        UpdateMainActionButton();
+        UpdateStartupStatus();
     }
 
     private async Task<PackManifest> GetManifestAsync(CancellationToken ct)
@@ -125,20 +154,54 @@ public partial class MainWindow : Window
         finally { SetBusy(false); }
     }
 
-    private void SetBusy(bool busy) { PlayButton.IsEnabled = !busy; }
-    private async Task<bool> AskAsync(string title, string message)
+    private void SetBusy(bool busy)
     {
-        var yes = new Button { Content = "Yes", MinWidth = 90 };
-        var no = new Button { Content = "No", MinWidth = 90 };
-        var dialog = new Window { Title = title, Width = 440, SizeToContent = SizeToContent.Height, WindowStartupLocation = WindowStartupLocation.CenterOwner, CanResize = false };
-        yes.Click += (_, _) => dialog.Close(true);
-        no.Click += (_, _) => dialog.Close(false);
-        dialog.Content = new StackPanel { Margin = new Thickness(20), Spacing = 16, Children =
+        _isBusy = busy;
+        UpdateMainActionButton();
+    }
+
+    private void UpdateMainActionButton()
+    {
+        if (!_startupChecksComplete || (!_packStatusKnown && _launcherUpdatePackage == null))
+            _mainAction = MainAction.Checking;
+        else if (!_packStatusKnown && _launcherUpdatePackage != null)
+            _mainAction = MainAction.UpdateLauncher;
+        else if (!_packInstalled)
+            _mainAction = MainAction.Install;
+        else if (_launcherUpdatePackage != null)
+            _mainAction = MainAction.UpdateLauncher;
+        else if (_packUpdateAvailable)
+            _mainAction = MainAction.UpdatePack;
+        else
+            _mainAction = MainAction.Play;
+
+        PlayButtonText.Text = _mainAction switch
         {
-            new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
-            new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Spacing = 8, Children = { no, yes } }
-        }};
-        return await dialog.ShowDialog<bool>(this);
+            MainAction.Install => "Install",
+            MainAction.UpdateLauncher or MainAction.UpdatePack => "Update",
+            MainAction.Play => "Play",
+            _ => "Checking…"
+        };
+        PlayButtonIcon.Text = _mainAction == MainAction.Play ? "▶" : _mainAction == MainAction.Checking ? "…" : "↓";
+        PlayButton.IsEnabled = !_isBusy && _mainAction != MainAction.Checking;
+    }
+
+    private void UpdateStartupStatus()
+    {
+        if (_launcherUpdatePackage != null) Status.Text = $"Launcher update available: {_launcherUpdateVersion}";
+        else if (!_packStatusKnown) Status.Text = "Modpack information unavailable";
+        else if (!_packInstalled) Status.Text = "Install available";
+        else if (_packUpdateAvailable) Status.Text = "Modpack update available";
+        else Status.Text = "Ready";
+    }
+
+    private static bool IsNewerPackVersion(string latest, string installed)
+    {
+        latest = latest.Trim().TrimStart('v', 'V');
+        installed = installed.Trim().TrimStart('v', 'V');
+        if (Version.TryParse(latest, out var latestVersion) && Version.TryParse(installed, out var installedVersion))
+            return latestVersion > installedVersion;
+        return !string.Equals(latest, installed, StringComparison.OrdinalIgnoreCase);
     }
     private void Log(string message) => Dispatcher.UIThread.Post(() => Console.Text += $"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
     private void ShowBackgroundFrame(int width, int height, byte[] pixels)
@@ -177,10 +240,28 @@ public partial class MainWindow : Window
     }
     private void RefreshVersion()
     {
-        if (_manifest == null) return;
+        if (_manifest == null)
+        {
+            _packStatusKnown = false;
+            _packInstalled = false;
+            _packUpdateAvailable = false;
+            return;
+        }
+
+        LatestVersion.Text = _manifest.Version;
+        VersionLabel.Text = $"FabriFroge Cobblemon {_manifest.Version}";
         var path = Path.Combine(Installer.GetPackRoot(Root, _manifest.PackId), "last_manifest.json");
-        if (File.Exists(path)) { try { var m = JsonSerializer.Deserialize<PackManifest>(File.ReadAllText(path), Net.JsonOpts); if (m != null) { InstalledVersion.Text = m.Version; VersionLabel.Text = $"FabriFroge Cobblemon {m.Version}"; } } catch { } }
-        else InstalledVersion.Text = "(none)";
+        PackManifest? installed = null;
+        if (File.Exists(path))
+        {
+            try { installed = JsonSerializer.Deserialize<PackManifest>(File.ReadAllText(path), Net.JsonOpts); }
+            catch (Exception ex) { Log($"Could not read installed modpack version: {ex.Message}"); }
+        }
+        _packStatusKnown = true;
+        _packInstalled = installed != null;
+        _packUpdateAvailable = installed != null && IsNewerPackVersion(_manifest.Version, installed.Version);
+        InstalledVersion.Text = installed?.Version ?? "(none)";
+        UpdateMainActionButton();
     }
     private async Task InstallOrRepairAsync(bool verify)
     {
@@ -192,14 +273,37 @@ public partial class MainWindow : Window
                 p => Dispatcher.UIThread.Post(() => { Progress.Value = p.FilesTotal == 0 ? 0 : (double)p.FilesDone / p.FilesTotal * 100; Status.Text = $"{p.FilesDone}/{p.FilesTotal} {p.CurrentFile}"; }), ct, verify);
             await NeoForgeClientInstaller.EnsureInstalledAsync(_http, Path.Combine(Installer.GetInstanceRoot(Root, manifest.PackId), ".minecraft"), JavaRuntime.JavawPath(Root), manifest.Loader?.Version ?? "", Log, ct);
             RefreshVersion();
+            UpdateStartupStatus();
             Log(changed ? "Pack files updated." : "Pack files already match the manifest.");
         });
     }
 
     private async void Install_Click(object? s, RoutedEventArgs e) => await InstallOrRepairAsync(false);
     private async void Repair_Click(object? s, RoutedEventArgs e) => await InstallOrRepairAsync(true);
-    private async void CheckUpdates_Click(object? s, RoutedEventArgs e) => await RunAsync("Checking pack updates", async ct => { var m = await GetManifestAsync(ct); VersionLabel.Text = "Latest pack version " + m.Version; RefreshVersion(); });
-    private async void Play_Click(object? s, RoutedEventArgs e) => await RunAsync("Launching Minecraft", async ct =>
+    private async void CheckUpdates_Click(object? s, RoutedEventArgs e) => await RunAsync("Checking pack updates", async ct =>
+    {
+        await GetManifestAsync(ct);
+        RefreshVersion();
+        UpdateStartupStatus();
+    });
+    private async void Play_Click(object? s, RoutedEventArgs e)
+    {
+        switch (_mainAction)
+        {
+            case MainAction.Install:
+            case MainAction.UpdatePack:
+                await InstallOrRepairAsync(false);
+                break;
+            case MainAction.UpdateLauncher:
+                await RunAsync("Updating launcher", ApplyLauncherUpdateAsync);
+                break;
+            case MainAction.Play:
+                await RunAsync("Launching Minecraft", LaunchGameAsync);
+                break;
+        }
+    }
+
+    private async Task LaunchGameAsync(CancellationToken ct)
     {
         var m = _manifest ?? await GetManifestAsync(ct);
         var session = await EnsureFreshSessionForPlayAsync(ct);
@@ -207,7 +311,7 @@ public partial class MainWindow : Window
         var gameDirectory = Path.Combine(Installer.GetInstanceRoot(Root, m.PackId), ".minecraft");
         await GameEngine.LaunchAsync(_http, Root, m, session, user, (int)(RamInput.Value ?? 7168), Log, ct,
             gameDirectory);
-    });
+    }
     private async Task<MSession> EnsureFreshSessionForPlayAsync(CancellationToken ct)
     {
         var loaded = AuthService.TryLoadSession(Root, Log);
@@ -243,10 +347,18 @@ public partial class MainWindow : Window
     }
     private void Wiki_Click(object? s, RoutedEventArgs e) => Process.Start(new ProcessStartInfo("https://wiki.fabrifroge.com/") { UseShellExecute = true });
     private void ToggleConsole_Click(object? s, RoutedEventArgs e) => Console.IsVisible = !Console.IsVisible;
-    private async Task CheckLauncherUpdateAsync(bool showStatus)
+    private async Task CheckLauncherUpdateAsync(bool showStatus, CancellationToken ct)
     {
-        var info = await SelfUpdater.FetchLatestAsync(_http, Log, _operation.Token);
-        if (info?.Version is null) { if (showStatus) Status.Text = "Update information unavailable"; return; }
+        var info = await SelfUpdater.FetchLatestAsync(_http, Log, ct);
+        _launcherUpdatePackage = null;
+        _launcherUpdateVersion = null;
+        if (info?.Version is null)
+        {
+            Log("Launcher update feed unavailable; continuing startup checks.");
+            if (showStatus) UpdateStartupStatus();
+            UpdateMainActionButton();
+            return;
+        }
         var current = SelfUpdater.GetCurrentVersion();
         if (SelfUpdater.IsNewer(info.Version, current, out var parsed))
         {
@@ -254,29 +366,57 @@ public partial class MainWindow : Window
             if (package == null || string.IsNullOrWhiteSpace(package.Url) || string.IsNullOrWhiteSpace(package.Sha256))
             {
                 Log($"Launcher {parsed} is available, but update metadata has no verified package for {System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier}.");
-                if (showStatus) Status.Text = "Update package unavailable for this platform";
-                return;
+                if (showStatus) Status.Text = "Launcher update package unavailable";
             }
-            var accepted = await AskAsync("Launcher update", $"A launcher update is available.\n\nCurrent: {current}\nLatest: {parsed}\n\nUpdate now?");
-            if (!accepted) { Log("Launcher update skipped."); return; }
-            var zip = await SelfUpdater.DownloadUpdateAsync(_http, package.Url, Log, _operation.Token);
-            if (zip == null) throw new InvalidOperationException("Launcher update download failed.");
-            if (!SelfUpdater.VerifySha256(zip, package.Sha256, Log)) throw new InvalidDataException("Downloaded launcher update failed SHA-256 verification.");
-            SelfUpdater.StartApplyUpdateAndExit(zip, Log);
+            else
+            {
+                _launcherUpdatePackage = package;
+                _launcherUpdateVersion = parsed;
+                Log($"Launcher update available: {current} -> {parsed}.");
+            }
         }
-        else if (showStatus) Status.Text = "Launcher is up to date";
+        else Log($"Launcher is up to date ({current}).");
+
+        UpdateMainActionButton();
+        if (showStatus) UpdateStartupStatus();
     }
-    private async void LauncherUpdate_Click(object? s, RoutedEventArgs e) => await RunAsync("Checking launcher update", _ => CheckLauncherUpdateAsync(true));
-    private async Task AutoCheckPackAsync()
+
+    private async Task ApplyLauncherUpdateAsync(CancellationToken ct)
     {
-        if (_manifest == null) return;
-        var installedPath = Path.Combine(Installer.GetPackRoot(Root, _manifest.PackId), "last_manifest.json");
-        string? installed = null;
-        try { if (File.Exists(installedPath)) installed = JsonSerializer.Deserialize<PackManifest>(await File.ReadAllTextAsync(installedPath))?.Version; } catch { }
-        if (string.Equals(installed, _manifest.Version, StringComparison.OrdinalIgnoreCase)) return;
-        var prompt = installed == null ? $"FabriFroge is not installed yet.\n\nLatest available: {_manifest.Version}\n\nInstall now?" : $"An update is available.\n\nInstalled: {installed}\nLatest: {_manifest.Version}\n\nUpdate now?";
-        Progress.Value = 100;
-        Status.Text = installed == _manifest.Version ? "Up to date" : "Update available";
-        if (await AskAsync("FabriFroge Launcher", prompt)) await InstallOrRepairAsync(false);
+        if (_launcherUpdatePackage == null)
+            await CheckLauncherUpdateAsync(false, ct);
+        var package = _launcherUpdatePackage;
+        if (package == null || string.IsNullOrWhiteSpace(package.Url) || string.IsNullOrWhiteSpace(package.Sha256))
+        {
+            UpdateStartupStatus();
+            return;
+        }
+
+        var archive = await SelfUpdater.DownloadUpdateAsync(_http, package.Url, Log, ct)
+            ?? throw new InvalidOperationException("Launcher update download failed.");
+        if (!SelfUpdater.VerifySha256(archive, package.Sha256, Log))
+            throw new InvalidDataException("Downloaded launcher update failed SHA-256 verification.");
+        SelfUpdater.StartApplyUpdateAndExit(archive, Log);
     }
+
+    private Task AutoCheckPackAsync(CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (_manifest == null)
+        {
+            _packStatusKnown = false;
+            UpdateMainActionButton();
+            return Task.CompletedTask;
+        }
+
+        RefreshVersion();
+        UpdateStartupStatus();
+        return Task.CompletedTask;
+    }
+
+    private async void LauncherUpdate_Click(object? s, RoutedEventArgs e) => await RunAsync("Checking launcher update", async ct =>
+    {
+        await CheckLauncherUpdateAsync(true, ct);
+        UpdateStartupStatus();
+    });
 }

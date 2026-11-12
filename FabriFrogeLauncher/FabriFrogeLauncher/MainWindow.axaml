@@ -73,8 +73,8 @@
           <Grid ColumnDefinitions="*,40" ColumnSpacing="8">
             <Button x:Name="PlayButton" Grid.Column="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Background="#FFE500" Foreground="#101820" BorderBrush="#FFE500" CornerRadius="28" Height="56" Click="Play_Click">
               <Grid ColumnDefinitions="38,*" Margin="4,0">
-                <Border Width="37" Height="37" CornerRadius="20" Background="#FFFF82" VerticalAlignment="Center"><TextBlock Text="▶" Foreground="#111820" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
-                <TextBlock Grid.Column="1" Text="Play" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <Border Width="37" Height="37" CornerRadius="20" Background="#FFFF82" VerticalAlignment="Center"><TextBlock x:Name="PlayButtonIcon" Text="…" Foreground="#111820" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                <TextBlock x:Name="PlayButtonText" Grid.Column="1" Text="Checking…" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
               </Grid>
             </Button>
             <Button Grid.Column="1" x:Name="PlayMenuButton" Width="40" Height="40" Padding="0" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#101820" BorderBrush="#101820" CornerRadius="22" Click="PlayMenu_Click">
