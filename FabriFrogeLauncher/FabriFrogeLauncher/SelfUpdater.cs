@@ -15,7 +15,7 @@ namespace FabriFrogeLauncher;
 
 public static class SelfUpdater
 {
-    private const string LauncherLatestUrl = "https://github.com/ThatBranModding/fabrifroge-launcher/releases/latest/download/launcher-self-latest.json";
+    private const string LauncherLatestUrl = "https://files.fabrifroge.com/launcher/self/latest.json";
     private const string ApplyArg = "--apply-update";
 
     private static readonly string ApplyLogPath =

@@ -77,10 +77,9 @@ jobs:
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
           version="${tag#launcher-v}"
-          repo="${GITHUB_REPOSITORY}"
-          python - "$version" "$repo" "$tag" <<'PY'
+          python - "$version" <<'PY'
           import hashlib, json, pathlib, sys
-          version, repo, tag = sys.argv[1:]
+          (version,) = sys.argv[1:]
           root = pathlib.Path("artifacts")
           downloads = {}
           installers = {}
@@ -89,7 +88,7 @@ jobs:
               archive = root / f"FabriFrogeLauncher-{version}-{rid}{suffix}"
               if not archive.exists():
                   raise SystemExit(f"Missing update archive: {archive}")
-              url = f"https://github.com/{repo}/releases/download/{tag}/{archive.name}"
+              url = f"https://files.fabrifroge.com/launcher/self/builds/{archive.name}"
               downloads[rid] = {"url": url, "sha256": hashlib.sha256(archive.read_bytes()).hexdigest()}
               installer_ext = ".exe" if rid.startswith("win-") else ".dmg" if rid.startswith("osx-") else ".deb" if rid.startswith("linux-") else None
               if installer_ext:
@@ -97,7 +96,7 @@ jobs:
                   installer = root / pattern
                   if not installer.exists():
                       raise SystemExit(f"Missing installer: {installer}")
-                  installers[rid] = {"url": f"https://github.com/{repo}/releases/download/{tag}/{installer.name}", "sha256": hashlib.sha256(installer.read_bytes()).hexdigest()}
+                  installers[rid] = {"url": f"https://files.fabrifroge.com/launcher/self/installers/{installer.name}", "sha256": hashlib.sha256(installer.read_bytes()).hexdigest()}
           (root / "launcher-self-latest.json").write_text(json.dumps({"version": version, "downloads": downloads, "installers": installers}, indent=2) + "\n")
           PY
           (cd artifacts && sha256sum * > SHA256SUMS.txt)
@@ -105,3 +104,47 @@ jobs:
         with:
           files: artifacts/*
           generate_release_notes: true
+      - name: Upload launcher files to homeserver
+        env:
+          SSHPASS: ${{ secrets.FABRIFROGE_SFTP_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SSHPASS:-}" ]]; then
+            echo "Missing repository secret FABRIFROGE_SFTP_PASSWORD" >&2
+            exit 1
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          ssh-keyscan -t ed25519 ftp.fabrifroge.com > "$HOME/.ssh/host-key-scan" 2>/dev/null
+          actual_fingerprint="$(ssh-keygen -lf "$HOME/.ssh/host-key-scan" -E sha256 | awk '{print $2}' | sed 's/^SHA256://' | sed 's/=*$//')"
+          expected_fingerprint='jygYqLouvUiCQUTXy1r0EWmRXpoWSO/OHCPVwOBPiZg'
+          if [[ "$actual_fingerprint" != "$expected_fingerprint" ]]; then
+            echo "SFTP host key does not match the pinned fingerprint" >&2
+            exit 1
+          fi
+          cp "$HOME/.ssh/host-key-scan" "$HOME/.ssh/known_hosts"
+          rm "$HOME/.ssh/host-key-scan"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          batch_file="$(mktemp)"
+          trap 'rm -f "$batch_file"' EXIT
+          printf '%s\n' \
+            'cd "/C:/Users/Branserver/Downloads/nginx-1.26.3/www/files"' \
+            '-mkdir launcher' \
+            '-mkdir launcher/self' \
+            '-mkdir launcher/self/builds' \
+            '-mkdir launcher/self/installers' > "$batch_file"
+          for package in artifacts/FabriFrogeLauncher-*; do
+            [[ -f "$package" ]] || continue
+            case "$package" in
+              *-setup.exe|*.dmg|*.deb) destination='launcher/self/installers/' ;;
+              *) destination='launcher/self/builds/' ;;
+            esac
+            printf 'put "%s" "%s"\n' "$package" "$destination" >> "$batch_file"
+          done
+          printf '%s\n' \
+            'put artifacts/SHA256SUMS.txt launcher/self/SHA256SUMS.txt' \
+            'put artifacts/launcher-self-latest.json launcher/self/latest.json' >> "$batch_file"
+          sshpass -e sftp -P 22 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -b "$batch_file" launcher@ftp.fabrifroge.com
