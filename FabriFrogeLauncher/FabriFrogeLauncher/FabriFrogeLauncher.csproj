@@ -6,9 +6,10 @@
     <DefaultItemExcludesInProjectFolder>$(DefaultItemExcludesInProjectFolder);artifacts/**;.dotnet-home/**;MigrationReference/**</DefaultItemExcludesInProjectFolder>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>1.1.8.6</Version>
-    <AssemblyVersion>1.1.8.6</AssemblyVersion>
-    <FileVersion>1.1.8.6</FileVersion>
+    <Version>1.1.8.7</Version>
+    <AssemblyVersion>1.1.8.7</AssemblyVersion>
+    <FileVersion>1.1.8.7</FileVersion>
+    <ApplicationIcon>Assets/AppIcon/app.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.10" />
@@ -25,5 +26,7 @@
   <ItemGroup>
     <Compile Remove="MigrationReference/**/*.cs" />
     <None Include="Assets/LauncherBackground/Lapras/lapras_day.webp" CopyToOutputDirectory="PreserveNewest" />
+    <AvaloniaResource Include="Assets/AppIcon/app.ico" />
+    <AvaloniaResource Include="Assets/AppIcon/app.png" />
   </ItemGroup>
 </Project>

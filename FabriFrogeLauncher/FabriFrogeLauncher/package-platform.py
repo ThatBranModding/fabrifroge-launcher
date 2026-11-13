@@ -25,6 +25,7 @@ if rid.startswith("win-"):
                 zf.write(path, path.relative_to(args.source).as_posix())
 elif rid.startswith("linux-"):
     arch = "amd64" if rid.endswith("x64") else "arm64"
+    app_icon = Path(__file__).parent / "Assets" / "AppIcon" / "app.png"
     root = args.output / f"deb-root-{rid}"
     if root.exists():
         shutil.rmtree(root)
@@ -38,13 +39,17 @@ elif rid.startswith("linux-"):
     wrapper.chmod(0o755)
     desktop = root / "usr" / "share" / "applications" / "fabrifroge-launcher.desktop"
     desktop.parent.mkdir(parents=True, exist_ok=True)
-    desktop.write_text("[Desktop Entry]\nName=FabriFroge Launcher\nComment=FabriFroge Minecraft launcher\nExec=fabrifroge-launcher\nTerminal=false\nType=Application\nCategories=Game;\n", encoding="utf-8")
+    icon_dir = root / "usr" / "share" / "icons" / "hicolor" / "256x256" / "apps"
+    icon_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(app_icon, icon_dir / "fabrifroge-launcher.png")
+    desktop.write_text("[Desktop Entry]\nName=FabriFroge Launcher\nComment=FabriFroge Minecraft launcher\nExec=fabrifroge-launcher\nIcon=fabrifroge-launcher\nTerminal=false\nType=Application\nCategories=Game;\n", encoding="utf-8")
     control = root / "DEBIAN" / "control"
     control.parent.mkdir(parents=True, exist_ok=True)
     control.write_text(f"Package: fabrifroge-launcher\nVersion: {args.version}\nSection: games\nPriority: optional\nArchitecture: {arch}\nMaintainer: FabriFroge\nDescription: FabriFroge Minecraft launcher\n", encoding="utf-8")
     subprocess.run(["dpkg-deb", "--build", "--root-owner-group", str(root), str(args.output / f"FabriFrogeLauncher-{args.version}-{rid}.deb")], check=True)
     shutil.rmtree(root)
 elif rid.startswith("osx-"):
+    app_icon = Path(__file__).parent / "Assets" / "AppIcon" / "app.icns"
     app = args.output / "FabriFrogeLauncher.app"
     if app.exists():
         shutil.rmtree(app)
@@ -55,9 +60,13 @@ elif rid.startswith("osx-"):
         shutil.copytree(item, destination) if item.is_dir() else shutil.copy2(item, destination)
     executable = macos / "FabriFrogeLauncher"
     executable.chmod(0o755)
+    resources = app / "Contents" / "Resources"
+    resources.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(app_icon, resources / "FabriFrogeLauncher.icns")
     info = {
         "CFBundleExecutable": "FabriFrogeLauncher",
         "CFBundleIdentifier": "com.fabrifroge.launcher",
+        "CFBundleIconFile": "FabriFrogeLauncher.icns",
         "CFBundleName": "FabriFroge Launcher",
         "CFBundlePackageType": "APPL",
         "CFBundleShortVersionString": args.version,

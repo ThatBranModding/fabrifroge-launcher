@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net.Http;
 using System.Net;
 using System.Net.Http.Headers;
@@ -18,6 +17,10 @@ namespace FabriFrogeLauncher;
 public partial class MainWindow : Window
 {
     private enum MainAction { Checking, Install, UpdateLauncher, UpdatePack, Play }
+    private sealed record RamOption(string Label, int MemoryMb);
+    private readonly RamOption[] _ramOptions = Enumerable.Range(2, 63)
+        .Select(gigabytes => new RamOption($"{gigabytes} GB", gigabytes * 1024))
+        .ToArray();
 
     // Keep the cross-platform launcher on its own pack feed. The legacy
     // launcher continues to use /launcher/latest.json and is not updated by
@@ -41,6 +44,7 @@ public partial class MainWindow : Window
     private bool _backgroundRunning;
     private bool _windowOpened;
     private bool _startupUpdatePromptShown;
+    private bool _ramOptionsReady;
     private readonly string _backgroundPath;
     private byte[]? _pendingBackgroundFrame;
     private int _backgroundUiQueued;
@@ -52,7 +56,15 @@ public partial class MainWindow : Window
         InitializeComponent();
         _settings = LauncherSettings.Load(Log);
         InstallPath.Text = _settings.InstallDirectory ?? DefaultInstallRoot();
-        RamInput.Value = _settings.RamMb;
+        var configuredRamMb = _settings.RamMb;
+        RamInput.ItemsSource = _ramOptions;
+        var selectedRam = _ramOptions.FirstOrDefault(option => option.MemoryMb == _settings.RamMb)
+            ?? _ramOptions.First(option => option.MemoryMb == 8192);
+        RamInput.SelectedItem = selectedRam;
+        _settings.RamMb = selectedRam.MemoryMb;
+        _ramOptionsReady = true;
+        if (selectedRam.MemoryMb != configuredRamMb)
+            SaveLauncherSettings();
         Console.IsVisible = false;
         _backgroundPath = Path.Combine(AppContext.BaseDirectory, "Assets", "LauncherBackground", "Lapras", "lapras_day.webp");
         Opened += async (_, _) =>
@@ -70,7 +82,7 @@ public partial class MainWindow : Window
             if (e.Property == WindowStateProperty || e.Property == IsVisibleProperty)
                 UpdateBackgroundPlayback();
         };
-        Closed += (_, _) => { _operation.Cancel(); _backgroundPlayer.Dispose(); _backgroundBitmap?.Dispose(); _http.Dispose(); };
+        Closed += (_, _) => { SaveLauncherSettings(); _operation.Cancel(); _backgroundPlayer.Dispose(); _backgroundBitmap?.Dispose(); _http.Dispose(); };
         _ = InitializeAsync();
     }
 
@@ -323,7 +335,6 @@ public partial class MainWindow : Window
         });
     }
 
-    private async void Install_Click(object? s, RoutedEventArgs e) => await InstallOrRepairAsync(false);
     private async void Repair_Click(object? s, RoutedEventArgs e) => await InstallOrRepairAsync(true);
     private async void CheckUpdates_Click(object? s, RoutedEventArgs e) => await RunAsync("Checking pack updates", async ct =>
     {
@@ -354,7 +365,7 @@ public partial class MainWindow : Window
         var session = await EnsureFreshSessionForPlayAsync(ct);
         var user = session.Username ?? Environment.UserName;
         var gameDirectory = Path.Combine(Installer.GetInstanceRoot(Root, m.PackId), ".minecraft");
-        await GameEngine.LaunchAsync(_http, Root, m, session, user, (int)(RamInput.Value ?? 7168), Log, ct,
+        await GameEngine.LaunchAsync(_http, Root, m, session, user, CurrentRamMb, Log, ct,
             gameDirectory);
     }
     private async Task<MSession> EnsureFreshSessionForPlayAsync(CancellationToken ct)
@@ -383,14 +394,35 @@ public partial class MainWindow : Window
     private async void SignIn_Click(object? s, RoutedEventArgs e) => await RunAsync("Microsoft sign in", async ct => { Log("Opening the default browser for Microsoft sign-in..."); _session = await AuthService.SignInMicrosoftAsync(Root, Log, ct); AccountLabel.Text = _session.Username; });
     private async void SignOut_Click(object? s, RoutedEventArgs e) => await RunAsync("Signing out", async _ => { await AuthService.SignOutAsync(Root, Log); _session = null; AccountLabel.Text = "Playing offline"; });
     private async void Switch_Click(object? s, RoutedEventArgs e) => await RunAsync("Switching account", async ct => { Log("Opening the default browser for Microsoft sign-in..."); _session = await AuthService.SwapAccountsAsync(Root, Log, ct); AccountLabel.Text = _session.Username; });
-    private async void SaveSettings_Click(object? s, RoutedEventArgs e) { _settings.InstallDirectory = Root; _settings.RamMb = (int)(RamInput.Value ?? 7168); _settings.Save(Log); Status.Text = "Settings saved"; await Task.CompletedTask; }
-    private void Ram_Changed(object? s, NumericUpDownValueChangedEventArgs e) { _settings.RamMb = (int)(e.NewValue ?? 7168); _settings.Save(Log); }
+    private int CurrentRamMb => (RamInput.SelectedItem as RamOption)?.MemoryMb ?? 8192;
+
+    private void SaveLauncherSettings()
+    {
+        _settings.InstallDirectory = Root;
+        _settings.RamMb = CurrentRamMb;
+        _settings.Save(Log);
+    }
+
+    private void Ram_Changed(object? s, SelectionChangedEventArgs e)
+    {
+        if (!_ramOptionsReady || RamInput.SelectedItem is not RamOption selected)
+            return;
+
+        _settings.RamMb = selected.MemoryMb;
+        SaveLauncherSettings();
+        Log($"Memory allocation saved: {selected.Label}");
+    }
+
+    private void InstallPath_LostFocus(object? s, RoutedEventArgs e) => SaveLauncherSettings();
     private async void Browse_Click(object? s, RoutedEventArgs e)
     {
         var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = "Choose FabriFroge install folder", AllowMultiple = false });
-        if (folders.Count > 0) InstallPath.Text = folders[0].Path.LocalPath;
+        if (folders.Count > 0)
+        {
+            InstallPath.Text = folders[0].Path.LocalPath;
+            SaveLauncherSettings();
+        }
     }
-    private void Wiki_Click(object? s, RoutedEventArgs e) => Process.Start(new ProcessStartInfo("https://wiki.fabrifroge.com/") { UseShellExecute = true });
     private void ToggleConsole_Click(object? s, RoutedEventArgs e) => Console.IsVisible = !Console.IsVisible;
     private async Task CheckLauncherUpdateAsync(bool showStatus, CancellationToken ct)
     {
@@ -459,13 +491,4 @@ public partial class MainWindow : Window
         return Task.CompletedTask;
     }
 
-    private async void LauncherUpdate_Click(object? s, RoutedEventArgs e)
-    {
-        await RunAsync("Checking launcher update", async ct =>
-        {
-            await CheckLauncherUpdateAsync(true, ct);
-            UpdateStartupStatus();
-        });
-        await ShowStartupUpdatePromptIfNeededAsync();
-    }
 }
