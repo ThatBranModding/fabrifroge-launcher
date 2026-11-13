@@ -13,20 +13,23 @@ public partial class LauncherUpdateDialog : Window
 {
     private bool _allowClose;
 
-    public LauncherUpdateDialog(string latestVersion, string? error)
+    public LauncherUpdateDialog()
     {
         InitializeComponent();
+        Closing += (_, e) =>
+        {
+            if (!_allowClose) e.Cancel = true;
+        };
+    }
+
+    public LauncherUpdateDialog(string latestVersion, string? error) : this()
+    {
         VersionText.Text = latestVersion;
         if (!string.IsNullOrWhiteSpace(error))
         {
             ErrorText.Text = $"Update failed: {error}";
             ErrorText.IsVisible = true;
         }
-
-        Closing += (_, e) =>
-        {
-            if (!_allowClose) e.Cancel = true;
-        };
     }
 
     private void UpdateNow_Click(object? sender, RoutedEventArgs e)
