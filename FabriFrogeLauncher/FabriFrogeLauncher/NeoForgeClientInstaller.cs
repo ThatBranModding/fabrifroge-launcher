@@ -86,8 +86,7 @@ public static class NeoForgeClientInstaller
                     fileName: javaExePath,
                     workingDir: mcDir,
                     args: args,
-                    ct: ct,
-                    onOutput: line => log("[NeoForge] " + line));
+                    ct: ct);
 
                 if (code != 0)
                     throw new Exception($"NeoForge installer exited with code {code}. Output: {output}");
@@ -128,9 +127,9 @@ public static class NeoForgeClientInstaller
         string fileName,
         string workingDir,
         string args,
-        CancellationToken ct,
-        Action<string> onOutput)
+        CancellationToken ct)
     {
+        const int maxCapturedOutputChars = 64 * 1024;
         var psi = new ProcessStartInfo
         {
             FileName = fileName,
@@ -145,6 +144,8 @@ public static class NeoForgeClientInstaller
         using var proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
         var output = new StringBuilder();
         var outputLock = new object();
+        var capturedOutputChars = 0;
+        var truncatedOutput = false;
         var streamsClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var closedStreams = 0;
 
@@ -158,8 +159,27 @@ public static class NeoForgeClientInstaller
             }
 
             var rendered = isError ? "[stderr] " + line : line;
-            lock (outputLock) output.AppendLine(rendered);
-            try { onOutput(rendered); } catch { }
+            lock (outputLock)
+            {
+                var lineLength = rendered.Length + Environment.NewLine.Length;
+                output.AppendLine(rendered);
+                capturedOutputChars += lineLength;
+                if (capturedOutputChars > maxCapturedOutputChars)
+                {
+                    var removeCount = capturedOutputChars - maxCapturedOutputChars;
+                    if (removeCount >= output.Length)
+                    {
+                        output.Clear();
+                        capturedOutputChars = 0;
+                    }
+                    else
+                    {
+                        output.Remove(0, removeCount);
+                        capturedOutputChars = output.Length;
+                    }
+                    truncatedOutput = true;
+                }
+            }
         }
 
         proc.OutputDataReceived += (_, e) => ReceiveLine(e.Data, false);
@@ -192,7 +212,12 @@ public static class NeoForgeClientInstaller
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
 
         string captured;
-        lock (outputLock) captured = output.ToString();
+        lock (outputLock)
+        {
+            captured = output.ToString();
+            if (truncatedOutput)
+                captured = "(Earlier NeoForge output was omitted to limit diagnostic size.)" + Environment.NewLine + captured;
+        }
         return (proc.ExitCode, captured);
     }
 }

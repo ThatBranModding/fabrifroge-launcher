@@ -6,9 +6,9 @@
     <DefaultItemExcludesInProjectFolder>$(DefaultItemExcludesInProjectFolder);artifacts/**;.dotnet-home/**;MigrationReference/**</DefaultItemExcludesInProjectFolder>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>1.1.8.4</Version>
-    <AssemblyVersion>1.1.8.4</AssemblyVersion>
-    <FileVersion>1.1.8.4</FileVersion>
+    <Version>1.1.8.5</Version>
+    <AssemblyVersion>1.1.8.5</AssemblyVersion>
+    <FileVersion>1.1.8.5</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.10" />
