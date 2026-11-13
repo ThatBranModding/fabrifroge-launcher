@@ -177,7 +177,7 @@ public partial class MainWindow : Window
         string? updateError = null;
         while (_launcherUpdateVersion != null)
         {
-            var dialog = new LauncherUpdateDialog(SelfUpdater.GetCurrentVersion(), _launcherUpdateVersion ?? "", updateError);
+            var dialog = new LauncherUpdateDialog(_launcherUpdateVersion ?? "", updateError);
             var choice = await dialog.ShowDialog<LauncherUpdateChoice>(this);
             if (choice == LauncherUpdateChoice.Exit)
             {

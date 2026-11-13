@@ -13,10 +13,10 @@ public partial class LauncherUpdateDialog : Window
 {
     private bool _allowClose;
 
-    public LauncherUpdateDialog(string currentVersion, string latestVersion, string? error)
+    public LauncherUpdateDialog(string latestVersion, string? error)
     {
         InitializeComponent();
-        VersionText.Text = $"Installed: {currentVersion}    Latest: {latestVersion}";
+        VersionText.Text = latestVersion;
         if (!string.IsNullOrWhiteSpace(error))
         {
             ErrorText.Text = $"Update failed: {error}";
