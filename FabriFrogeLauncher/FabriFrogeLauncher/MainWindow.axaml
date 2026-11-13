@@ -108,7 +108,7 @@
                   <Button Content="Show / hide console" Click="ToggleConsole_Click"/>
                   <Border Height="1" Background="#72899A" Margin="4,3"/>
                   <StackPanel Spacing="5" Margin="5,3,5,2">
-                    <TextBlock Text="Memory allocation (autosaves)" Foreground="White"/>
+                    <TextBlock Text="Memory allocation" Foreground="White"/>
                     <ComboBox x:Name="RamInput" Height="32" HorizontalAlignment="Stretch" SelectionChanged="Ram_Changed">
                       <ComboBox.ItemTemplate>
                         <DataTemplate><TextBlock Text="{Binding Label}"/></DataTemplate>
