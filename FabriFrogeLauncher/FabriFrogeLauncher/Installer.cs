@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -57,7 +58,11 @@ public static class Installer
     }
 
     public static string GetPackRoot(string installRoot, string packId)
-        => Path.Combine(installRoot, "FabriFroge", "packs", packId);
+    {
+        if (string.IsNullOrWhiteSpace(packId) || !Regex.IsMatch(packId, "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$") || packId is "." or "..")
+            throw new InvalidDataException("The pack ID is not a safe folder name.");
+        return Path.Combine(Path.GetFullPath(installRoot), "FabriFroge", "packs", packId);
+    }
 
     public static string GetInstanceRoot(string installRoot, string packId)
         => Path.Combine(GetPackRoot(installRoot, packId), "instance");
@@ -79,6 +84,7 @@ public static class Installer
     {
         var packRoot = GetPackRoot(installRoot, manifest.PackId);
         var instanceRoot = GetInstanceRoot(installRoot, manifest.PackId);
+        ValidateManifestPaths(manifest);
 
         Directory.CreateDirectory(packRoot);
         Directory.CreateDirectory(instanceRoot);
@@ -109,17 +115,14 @@ public static class Installer
         var indexPath = GetIndexPath(packRoot);
         var index = LoadIndex(indexPath, manifest.PackId);
 
-        // IMPORTANT: do not remove preserved files even if manifest says so
-        ApplyRemoveList(GetRemoveEntries(manifest), instanceRoot, index, log);
-
         var work = new List<ManifestFile>();
 
         foreach (var f in manifest.Files)
         {
             ct.ThrowIfCancellationRequested();
 
-            var normalizedPath = (f.Path ?? "").Replace('\\', '/').TrimStart('/');
-            var target = Path.Combine(instanceRoot, normalizedPath.Replace('/', Path.DirectorySeparatorChar));
+            var normalizedPath = NormalizeManifestPath(f.Path);
+            var target = ResolveManifestPath(instanceRoot, normalizedPath);
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
 
             // If this is a preserved file and it already exists, we NEVER overwrite it.
@@ -180,6 +183,8 @@ public static class Installer
 
         if (work.Count == 0)
         {
+            await RemoveStaleManagedFilesAsync(manifest, instanceRoot, index, log, ct);
+            ApplyRemoveList(GetRemoveEntries(manifest), instanceRoot, index, log);
             WriteVersionMarker(packRoot, manifest.Version);
 
             index.Version = manifest.Version;
@@ -204,21 +209,22 @@ public static class Installer
         log($"{(fullVerify ? "Repairing" : "Updating")} {work.Count}/{manifest.Files.Count} files (parallel={MaxParallelDownloads})...");
 
         using var sem = new SemaphoreSlim(MaxParallelDownloads, MaxParallelDownloads);
+        using var downloadCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var tasks = new List<Task>(work.Count);
 
         foreach (var f in work)
         {
             ct.ThrowIfCancellationRequested();
-            await sem.WaitAsync(ct);
+            await sem.WaitAsync(downloadCts.Token);
 
             tasks.Add(Task.Run(async () =>
             {
                 try
                 {
-                    ct.ThrowIfCancellationRequested();
+                    downloadCts.Token.ThrowIfCancellationRequested();
 
-                    var normalizedPath = (f.Path ?? "").Replace('\\', '/').TrimStart('/');
-                    var target = Path.Combine(instanceRoot, normalizedPath.Replace('/', Path.DirectorySeparatorChar));
+                    var normalizedPath = NormalizeManifestPath(f.Path);
+                    var target = ResolveManifestPath(instanceRoot, normalizedPath);
                     Directory.CreateDirectory(Path.GetDirectoryName(target)!);
 
                     // Double-safety: never overwrite preserved files if they exist
@@ -229,7 +235,7 @@ public static class Installer
                         return;
                     }
 
-                    var tmp = target + ".tmp";
+                    var tmp = target + ".tmp-" + Guid.NewGuid().ToString("N");
                     if (File.Exists(tmp)) File.Delete(tmp);
 
                     await DownloadToFileAsync(
@@ -242,7 +248,7 @@ public static class Installer
                             Interlocked.Add(ref bytesDone, delta);
                             PushProgress();
                         },
-                        ct,
+                        downloadCts.Token,
                         normalizedPath);
 
                     var downloadedHash = await Sha256HexOfFileAsync(tmp, ct);
@@ -252,25 +258,33 @@ public static class Installer
                         throw new Exception($"SHA256 mismatch for {normalizedPath}");
                     }
 
-                    if (File.Exists(target)) File.Delete(target);
-                    File.Move(tmp, target);
+                    File.Move(tmp, target, overwrite: true);
 
                     lock (index)
                     {
                         index.Files[normalizedPath] = new FileIndexEntry { Sha256 = f.Sha256, Size = f.Size };
+                        SaveIndex(indexPath, index);
                     }
 
                     Interlocked.Increment(ref filesDone);
                     PushProgress();
                 }
+                catch
+                {
+                    try { downloadCts.Cancel(); } catch { }
+                    throw;
+                }
                 finally
                 {
                     sem.Release();
                 }
-            }, ct));
+            }, downloadCts.Token));
         }
 
         await Task.WhenAll(tasks);
+
+        await RemoveStaleManagedFilesAsync(manifest, instanceRoot, index, log, ct);
+        ApplyRemoveList(GetRemoveEntries(manifest), instanceRoot, index, log);
 
         if (bytesDone > totalBytes)
             bytesDone = totalBytes;
@@ -301,13 +315,9 @@ public static class Installer
             var tmp = p + ".tmp";
             var opts = new JsonSerializerOptions { WriteIndented = true };
             File.WriteAllText(tmp, JsonSerializer.Serialize(manifest, opts));
-            if (File.Exists(p)) File.Delete(p);
-            File.Move(tmp, p);
+            File.Move(tmp, p, overwrite: true);
         }
-        catch
-        {
-            // ignore
-        }
+        catch { throw; }
     }
 
     private static IReadOnlyList<string> GetRemoveEntries(PackManifest manifest)
@@ -346,12 +356,12 @@ public static class Installer
         {
             try
             {
-                var normalized = (rel ?? "").Replace('\\', '/').TrimStart('/');
+                var normalized = NormalizeManifestPath(rel);
                 // Never remove preserved files
                 if (IsPreserved(normalized))
                     continue;
 
-                var target = Path.Combine(instanceRoot, normalized.Replace('/', Path.DirectorySeparatorChar));
+                var target = ResolveManifestPath(instanceRoot, normalized);
                 if (File.Exists(target))
                 {
                     File.Delete(target);
@@ -360,9 +370,9 @@ public static class Installer
 
                 index.Files.Remove(normalized);
             }
-            catch
+            catch (Exception ex)
             {
-                // ignore
+                throw new InvalidDataException($"Could not safely apply manifest removal entry '{rel}'.", ex);
             }
         }
     }
@@ -399,13 +409,9 @@ public static class Installer
             var opts = new JsonSerializerOptions { WriteIndented = true };
             var tmp = indexPath + ".tmp";
             File.WriteAllText(tmp, JsonSerializer.Serialize(index, opts));
-            if (File.Exists(indexPath)) File.Delete(indexPath);
-            File.Move(tmp, indexPath);
+            File.Move(tmp, indexPath, overwrite: true);
         }
-        catch
-        {
-            // ignore
-        }
+        catch { throw; }
     }
 
     private static void WriteVersionMarker(string packRoot, string version)
@@ -413,8 +419,7 @@ public static class Installer
         var finalPath = Path.Combine(packRoot, "current.txt");
         var tmpPath = finalPath + ".tmp";
         File.WriteAllText(tmpPath, version);
-        if (File.Exists(finalPath)) File.Delete(finalPath);
-        File.Move(tmpPath, finalPath);
+        File.Move(tmpPath, finalPath, overwrite: true);
     }
 
     private static async Task DownloadToFileAsync(
@@ -426,23 +431,126 @@ public static class Installer
         CancellationToken ct,
         string logicalPath)
     {
-        using var resp = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
-        if (!resp.IsSuccessStatusCode)
-            throw new Exception($"{(int)resp.StatusCode} {resp.ReasonPhrase} while downloading: {logicalPath}");
-
-        await using var stream = await resp.Content.ReadAsStreamAsync(ct);
-        await using var fs = new FileStream(outPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-
-        var buffer = new byte[128 * 1024];
-        int read;
-        while ((read = await stream.ReadAsync(buffer, 0, buffer.Length, ct)) > 0)
+        for (var attempt = 1; attempt <= 3; attempt++)
         {
-            await fs.WriteAsync(buffer, 0, read, ct);
-            onBytes(read);
-        }
+            long attemptBytes = 0;
+            try
+            {
+                using var resp = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    if ((int)resp.StatusCode < 500 && (int)resp.StatusCode != 429)
+                        throw new InvalidDataException($"{(int)resp.StatusCode} {resp.ReasonPhrase} while downloading: {logicalPath}");
+                    throw new HttpRequestException($"{(int)resp.StatusCode} {resp.ReasonPhrase} while downloading: {logicalPath}");
+                }
 
-        await fs.FlushAsync(ct);
-        _ = expectedSize;
+                await using var stream = await resp.Content.ReadAsStreamAsync(ct);
+                await using var fs = new FileStream(outPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                var buffer = new byte[128 * 1024];
+                int read;
+                while ((read = await stream.ReadAsync(buffer, ct)) > 0)
+                {
+                    await fs.WriteAsync(buffer.AsMemory(0, read), ct);
+                    attemptBytes += read;
+                    onBytes(read);
+                }
+                await fs.FlushAsync(ct);
+                if (attemptBytes != expectedSize)
+                    throw new IOException($"Downloaded size mismatch for {logicalPath}: got {attemptBytes}, expected {expectedSize}.");
+                return;
+            }
+            catch (Exception ex) when (attempt < 3 && (ex is HttpRequestException || ex is IOException) && !ct.IsCancellationRequested)
+            {
+                onBytes(-attemptBytes);
+                try { File.Delete(outPath); } catch { }
+                await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt), ct);
+            }
+            catch
+            {
+                onBytes(-attemptBytes);
+                try { File.Delete(outPath); } catch { }
+                throw;
+            }
+        }
+    }
+
+    private static string NormalizeManifestPath(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.StartsWith('/') || value.StartsWith('\\') ||
+            Path.IsPathRooted(value) || value.Contains(':'))
+            throw new InvalidDataException($"Unsafe manifest path: '{value}'.");
+        var segments = value.Replace('\\', '/').Split('/');
+        if (segments.Any(segment => segment.Length == 0 || segment is "." or ".."))
+            throw new InvalidDataException($"Unsafe manifest path: '{value}'.");
+        return string.Join('/', segments);
+    }
+
+    private static string ResolveManifestPath(string root, string normalizedPath)
+    {
+        var fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var fullPath = Path.GetFullPath(Path.Combine(fullRoot, normalizedPath.Replace('/', Path.DirectorySeparatorChar)));
+        var prefix = fullRoot + Path.DirectorySeparatorChar;
+        if (!fullPath.StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            throw new InvalidDataException($"Manifest path escapes managed root: '{normalizedPath}'.");
+        var relative = Path.GetRelativePath(fullRoot, fullPath);
+        var cursor = fullRoot;
+        foreach (var part in relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+        {
+            cursor = Path.Combine(cursor, part);
+            if (!File.Exists(cursor) && !Directory.Exists(cursor)) continue;
+            if ((File.GetAttributes(cursor) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException($"Managed path crosses a symbolic link or junction: '{normalizedPath}'.");
+        }
+        return fullPath;
+    }
+
+    private static void ValidateManifestPaths(PackManifest manifest)
+    {
+        if (manifest.Files == null) throw new InvalidDataException("Manifest file list is missing.");
+        foreach (var file in manifest.Files)
+        {
+            var path = NormalizeManifestPath(file.Path);
+            if (file.Size < 0 || !Regex.IsMatch(file.Sha256 ?? "", "^[A-Fa-f0-9]{64}$"))
+                throw new InvalidDataException($"Invalid size or SHA-256 for manifest file '{path}'.");
+            if (!Uri.TryCreate(file.Url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+                throw new InvalidDataException($"Manifest file URL must use HTTPS: '{path}'.");
+        }
+        foreach (var root in manifest.ManagedRoots ?? new List<string>()) _ = NormalizeManifestPath(root);
+        foreach (var entry in GetRemoveEntries(manifest)) _ = NormalizeManifestPath(entry);
+    }
+
+    private static async Task RemoveStaleManagedFilesAsync(PackManifest manifest, string instanceRoot, FileIndex index, Action<string> log, CancellationToken ct)
+    {
+        var pathComparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var pathComparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        var current = new HashSet<string>(manifest.Files.Select(f => NormalizeManifestPath(f.Path)), pathComparer);
+        var roots = (manifest.ManagedRoots ?? new List<string>()).Select(NormalizeManifestPath).ToArray();
+        foreach (var oldPath in index.Files.Keys.ToArray())
+        {
+            ct.ThrowIfCancellationRequested();
+            string normalized;
+            try { normalized = NormalizeManifestPath(oldPath); }
+            catch { continue; }
+            if (current.Contains(normalized) || IsPreserved(normalized)) continue;
+            // If the manifest declares roots, only clean within those. Older manifests omit
+            // them; the prior file index still identifies exactly which paths we managed.
+            if (roots.Length > 0 && !roots.Any(root => normalized.StartsWith(root + "/", pathComparison))) continue;
+            var target = ResolveManifestPath(instanceRoot, normalized);
+            if (File.Exists(target))
+            {
+                var oldEntry = index.Files[oldPath];
+                var info = new FileInfo(target);
+                if (info.Length != oldEntry.Size ||
+                    !string.Equals(await Sha256HexOfFileAsync(target, ct), oldEntry.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    log($"Preserved modified managed file: {normalized}");
+                    continue;
+                }
+                File.Delete(target);
+                log($"Removed stale managed file: {normalized}");
+            }
+            index.Files.Remove(oldPath);
+        }
     }
 
     private static async Task<string> Sha256HexOfFileAsync(string path, CancellationToken ct)

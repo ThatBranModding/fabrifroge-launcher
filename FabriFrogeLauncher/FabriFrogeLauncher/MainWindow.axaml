@@ -59,7 +59,7 @@
                 <TextBlock Text="Install folder" FontSize="12" Foreground="White"/>
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                   <TextBox x:Name="InstallPath" Grid.Column="0" Height="31" VerticalContentAlignment="Center" LostFocus="InstallPath_LostFocus"/>
-                  <Button Grid.Column="1" Content="Browse" Width="89" Click="Browse_Click"/>
+                  <Button x:Name="BrowseButton" Grid.Column="1" Content="Browse" Width="89" Click="Browse_Click"/>
                 </Grid>
               </StackPanel>
             </Border>

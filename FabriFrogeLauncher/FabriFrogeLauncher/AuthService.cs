@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -57,18 +57,32 @@ public static class AuthService
         public IAuthenticator Signout() => _builder.ClearSession();
     }
 
-    // ---- Paths ----
-
-    private static string GetPrimarySessionPath(string installRoot)
-        => Path.Combine(installRoot, SessionFileName);
+    // Auth data lives in the per-user settings folder, never beside the installed game.
+    private static string GetSessionPath()
+        => Path.Combine(Path.GetDirectoryName(LauncherSettings.GetSettingsPath())!, SessionFileName);
 
     private static string[] GetCandidateSessionPaths(string installRoot)
         => new[]
         {
-            GetPrimarySessionPath(installRoot),
+            GetSessionPath(),
+            Path.Combine(installRoot, SessionFileName),
             Path.Combine(installRoot, "FabriFroge", SessionFileName),
             Path.Combine(installRoot, "auth", SessionFileName),
         };
+
+    private static void RestrictSessionPermissions(string path)
+    {
+        if (OperatingSystem.IsWindows()) return;
+        try
+        {
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
+                File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            if (File.Exists(path))
+                File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+        catch { }
+    }
 
     // ---- Debug helpers ----
 
@@ -165,7 +179,14 @@ public static class AuthService
                         : dto.UserType!
                 };
 
-                log($"Auth cache loaded from: {p} (user={session.Username})");
+                var securePath = GetSessionPath();
+                if (!string.Equals(Path.GetFullPath(p), Path.GetFullPath(securePath), OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                {
+                    SaveSession(installRoot, session, log);
+                    try { File.Delete(p); } catch { }
+                }
+                else RestrictSessionPermissions(securePath);
+                log($"Auth cache loaded from per-user storage (user={session.Username}).");
                 return session;
             }
 
@@ -183,11 +204,6 @@ public static class AuthService
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(installRoot))
-                throw new ArgumentException("installRoot is empty", nameof(installRoot));
-
-            Directory.CreateDirectory(installRoot);
-
             var dto = new SessionDto
             {
                 Username = session.Username,
@@ -196,26 +212,21 @@ public static class AuthService
                 ClientToken = session.ClientToken,
                 UserType = session.UserType
             };
-
-            var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions
-            {
-                WriteIndented = true
-            });
-
-            var primaryPath = GetPrimarySessionPath(installRoot);
-            File.WriteAllText(primaryPath, json);
-            log($"Saved Microsoft session to: {primaryPath}");
-
-            // Optional: also write to auth/ (harmless, helps if you later move paths)
-            var authDirPath = Path.Combine(installRoot, "auth");
-            Directory.CreateDirectory(authDirPath);
-            var secondary = Path.Combine(authDirPath, SessionFileName);
-            File.WriteAllText(secondary, json);
-            log($"Saved Microsoft session copy to: {secondary}");
+            var path = GetSessionPath();
+            RestrictSessionPermissions(path);
+            var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions { WriteIndented = true });
+            var tmp = path + ".tmp-" + Guid.NewGuid().ToString("N");
+            File.WriteAllText(tmp, json, Encoding.UTF8);
+            RestrictSessionPermissions(tmp);
+            File.Move(tmp, path, overwrite: true);
+            RestrictSessionPermissions(path);
+            log("Saved Microsoft session in per-user application data.");
+            foreach (var legacy in GetCandidateSessionPaths(installRoot).Skip(1))
+                try { if (File.Exists(legacy)) File.Delete(legacy); } catch { }
         }
         catch (Exception ex)
         {
-            log($"SaveSession failed: {ex}");
+            log($"SaveSession failed: {ex.Message}");
             throw;
         }
     }
@@ -397,7 +408,7 @@ public static class AuthService
         try
         {
             log("Microsoft sign-in: attempting default auth flow...");
-            var session = await loginHandler.Authenticate().ConfigureAwait(false);
+            var session = await loginHandler.AuthenticateInteractively(ct).ConfigureAwait(false);
 
             ct.ThrowIfCancellationRequested();
             ValidateSessionOrThrow(session);
@@ -467,7 +478,9 @@ public static class AuthService
             || text.Contains("XASU error=token_expired", StringComparison.OrdinalIgnoreCase)
             || text.Contains("Interactive Microsoft authentication is required", StringComparison.OrdinalIgnoreCase)
             || text.Contains("Cached RefreshToken", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("expired", StringComparison.OrdinalIgnoreCase);
+            || text.Contains("invalid_grant", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("AADSTS700082", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("AADSTS700084", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void ValidateSessionOrThrow(MSession? session)

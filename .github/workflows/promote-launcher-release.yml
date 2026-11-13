@@ -1,0 +1,84 @@
+name: Promote cross-platform launcher release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to make the required cross-platform update
+        required: true
+        type: string
+      confirm:
+        description: Type PROMOTE to move the live update feed
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    if: inputs.confirm == 'PROMOTE'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate staged release and installer links
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          url="https://files.fabrifroge.com/launcher/v2/self/releases/$VERSION/launcher-self-latest.json"
+          curl --fail --silent --show-error "$url" -o latest.json
+          python - "$VERSION" <<'PY'
+          import json, pathlib, sys, urllib.request
+          version = sys.argv[1]
+          data = json.loads(pathlib.Path("latest.json").read_text(encoding="utf-8-sig"))
+          if data.get("version") != version:
+              raise SystemExit("Staged metadata version does not match the requested version")
+          expected = {"win-x64", "win-arm64", "osx-x64", "osx-arm64", "linux-x64", "linux-arm64"}
+          for group in ("downloads", "installers"):
+              entries = data.get(group)
+              required = expected if group == "downloads" else expected
+              if not isinstance(entries, dict) or set(entries) != required:
+                  raise SystemExit(f"{group} metadata must contain all six platform packages")
+              for rid, package in entries.items():
+                  if not package.get("sha256") or len(package["sha256"]) != 64:
+                      raise SystemExit(f"Missing SHA-256 for {group}/{rid}")
+                  request = urllib.request.Request(package["url"], method="HEAD")
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      if response.status != 200:
+                          raise SystemExit(f"Unavailable package: {package['url']}")
+          PY
+      - name: Publish live metadata pointers
+        env:
+          SSHPASS: ${{ secrets.FABRIFROGE_SFTP_PASSWORD }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${SSHPASS:-}" ]]; then
+            echo "Missing repository secret FABRIFROGE_SFTP_PASSWORD" >&2
+            exit 1
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          ssh-keyscan -t ed25519 ftp.fabrifroge.com > "$HOME/.ssh/known_hosts" 2>/dev/null
+          actual="$(ssh-keygen -lf "$HOME/.ssh/known_hosts" -E sha256 | awk '{print $2}' | sed 's/^SHA256://' | sed 's/=*$//')"
+          [[ "$actual" == 'jygYqLouvUiCQUTXy1r0EWmRXpoWSO/OHCPVwOBPiZg' ]]
+          chmod 600 "$HOME/.ssh/known_hosts"
+          batch="$(mktemp)"
+          trap 'rm -f "$batch"' EXIT
+          printf '%s\n' \
+            'cd "/C:/Users/Branserver/Downloads/nginx-1.26.3/www"' \
+            'put latest.json download/latest.json' \
+            'cd "/C:/Users/Branserver/Downloads/nginx-1.26.3/www/files"' \
+            'put latest.json launcher/v2/self/latest.json' \
+            'ls -l "/C:/Users/Branserver/Downloads/nginx-1.26.3/www/download/latest.json"' \
+            'ls -l "/C:/Users/Branserver/Downloads/nginx-1.26.3/www/files/launcher/v2/self/latest.json"' > "$batch"
+          sshpass -e sftp -P 22 -o PreferredAuthentications=password -o PubkeyAuthentication=no -o BatchMode=no -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" launcher@ftp.fabrifroge.com < "$batch"
+      - name: Confirm live feed version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error https://files.fabrifroge.com/launcher/v2/self/latest.json | python -c 'import json,sys; d=json.load(sys.stdin); print("Live required-update version:",d.get("version")); sys.exit(0 if d.get("version")=="'"$VERSION"'" else 1)'

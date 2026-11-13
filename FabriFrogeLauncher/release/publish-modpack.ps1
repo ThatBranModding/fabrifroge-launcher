@@ -70,9 +70,9 @@ $commands = @(
   "option batch continue",
   "mkdir launcher", "mkdir launcher/v2", "mkdir launcher/v2/manifests", "mkdir launcher/v2/files", "mkdir launcher/v2/files/sha256",
   "option batch abort",
-  "put `"$latestPath`" `"launcher/v2/latest.json`"",
-  "put `"$manifestOut`" `"launcher/v2/manifests/$packVersion.json`"",
   "synchronize remote `"$PackFilesSha256Dir`" `"launcher/v2/files/sha256`"",
+  "put `"$manifestOut`" `"launcher/v2/manifests/$packVersion.json`"",
+  "put `"$latestPath`" `"launcher/v2/latest.json`"",
   "exit"
 )
 Set-Content -LiteralPath $scriptFile -Value ($commands -join "`r`n") -Encoding ASCII

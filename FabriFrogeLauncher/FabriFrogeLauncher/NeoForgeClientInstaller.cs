@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -55,22 +57,31 @@ public static class NeoForgeClientInstaller
         var installerJar = Path.Combine(cacheDir, $"neoforge-{neoforgeVersion}-installer.jar");
 
         log($"Downloading NeoForge installer: {installerUrl}");
-        using (var resp = await http.GetAsync(installerUrl, ct))
+        var tempJar = installerJar + ".download";
+        using (var response = await http.GetAsync(installerUrl, HttpCompletionOption.ResponseHeadersRead, ct))
         {
-            resp.EnsureSuccessStatusCode();
-            await using var s = await resp.Content.ReadAsStreamAsync(ct);
-            await using var fs = new FileStream(installerJar, FileMode.Create, FileAccess.Write, FileShare.None);
-            await s.CopyToAsync(fs, ct);
+            response.EnsureSuccessStatusCode();
+            await using var source = await response.Content.ReadAsStreamAsync(ct);
+            await using var output = new FileStream(tempJar, FileMode.Create, FileAccess.Write, FileShare.None);
+            await source.CopyToAsync(output, ct);
+            await output.FlushAsync(ct);
         }
 
-        // Try a few argument styles (NeoForge/Forge installer jars vary by version)
-        var argCandidates = new[]
+        using (var checksumResponse = await http.GetAsync(installerUrl + ".sha256", ct))
         {
-            $"-jar \"{installerJar}\" --installClient \"{mcDir}\"",
-            $"-jar \"{installerJar}\" --install-client \"{mcDir}\"",
-            $"-jar \"{installerJar}\" --install-client",
-            $"-jar \"{installerJar}\" --help"
-        };
+            checksumResponse.EnsureSuccessStatusCode();
+            var checksumText = await checksumResponse.Content.ReadAsStringAsync(ct);
+            var match = Regex.Match(checksumText, @"\b([A-Fa-f0-9]{64})\b");
+            if (!match.Success) throw new InvalidDataException("NeoForge installer checksum file did not contain a SHA-256 hash.");
+            await using var jarStream = File.OpenRead(tempJar);
+            var actual = Convert.ToHexString(await SHA256.HashDataAsync(jarStream, ct));
+            if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(actual), Convert.FromHexString(match.Groups[1].Value)))
+                throw new InvalidDataException("NeoForge installer SHA-256 verification failed.");
+        }
+        File.Move(tempJar, installerJar, overwrite: true);
+
+        // NeoForge 21.1 installer mode: install the client into this exact instance.
+        var argCandidates = new[] { $"-jar \"{installerJar}\" --installClient \"{Path.GetFullPath(mcDir)}\"" };
 
         Exception? lastErr = null;
 

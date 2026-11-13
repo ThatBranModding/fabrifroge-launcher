@@ -33,8 +33,15 @@ public static class SelfUpdater
     {
         public string? Version { get; set; }
         public System.Collections.Generic.Dictionary<string, LauncherPackage>? Downloads { get; set; }
+        public System.Collections.Generic.Dictionary<string, LauncherPackage>? Installers { get; set; }
 
-        public LauncherPackage? GetPlatformPackage()
+        public LauncherPackage? GetPlatformInstaller()
+        {
+            var platformPackage = GetPlatformPackageKey();
+            return platformPackage != null && Installers != null && Installers.TryGetValue(platformPackage, out var installer) ? installer : null;
+        }
+
+        private string? GetPlatformPackageKey()
         {
             var architecture = RuntimeInformation.ProcessArchitecture;
             var rid = OperatingSystem.IsWindows()
@@ -44,10 +51,16 @@ public static class SelfUpdater
                     : OperatingSystem.IsLinux()
                         ? architecture == Architecture.Arm64 ? "linux-arm64" : architecture == Architecture.X64 ? "linux-x64" : ""
                         : "";
-            if (Downloads == null) return null;
-            foreach (var entry in Downloads)
-                if (entry.Key.Equals(rid, StringComparison.OrdinalIgnoreCase)) return entry.Value;
+            if (string.IsNullOrEmpty(rid)) return null;
+            foreach (var entry in Downloads ?? new())
+                if (entry.Key.Equals(rid, StringComparison.OrdinalIgnoreCase)) return entry.Key;
             return null;
+        }
+
+        public LauncherPackage? GetPlatformPackage()
+        {
+            var key = GetPlatformPackageKey();
+            return key != null && Downloads != null && Downloads.TryGetValue(key, out var package) ? package : null;
         }
     }
 
@@ -171,24 +184,42 @@ public static class SelfUpdater
     public static async Task<string?> DownloadUpdateAsync(
         System.Net.Http.HttpClient http, string url, Action<string> log, CancellationToken ct)
     {
+        var uri = new Uri(url);
+        var extension = uri.AbsolutePath.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase) ? ".tar.gz" : ".zip";
+        var path = Path.Combine(Path.GetTempPath(), $"FabriFrogeLauncher_update_{Guid.NewGuid():N}{extension}");
         try
         {
-            var uri = new Uri(url);
-            var extension = uri.AbsolutePath.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase) ? ".tar.gz" : ".zip";
-            var tmp = Path.Combine(Path.GetTempPath(), $"FabriFrogeLauncher_update_{Guid.NewGuid():N}{extension}");
-            log($"Launcher update: downloading -> {tmp}");
-
-            using var resp = await http.GetAsync(url, System.Net.Http.HttpCompletionOption.ResponseHeadersRead, ct);
-            resp.EnsureSuccessStatusCode();
-
-            await using var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None);
-            await resp.Content.CopyToAsync(fs, ct);
-
-            log("Launcher update: download complete.");
-            return tmp;
+            for (var attempt = 1; attempt <= 3; attempt++)
+            {
+                try
+                {
+                    log($"Launcher update: downloading package (attempt {attempt}/3).");
+                    using var response = await http.GetAsync(uri, System.Net.Http.HttpCompletionOption.ResponseHeadersRead, ct);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        if ((int)response.StatusCode < 500 && (int)response.StatusCode != 429)
+                            response.EnsureSuccessStatusCode();
+                        throw new System.Net.Http.HttpRequestException($"HTTP {(int)response.StatusCode} while downloading launcher update.");
+                    }
+                    await using var output = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+                    await response.Content.CopyToAsync(output, ct);
+                    await output.FlushAsync(ct);
+                    log("Launcher update: download complete.");
+                    return path;
+                }
+                catch (Exception ex) when (attempt < 3 && (ex is System.Net.Http.HttpRequestException || ex is IOException) && !ct.IsCancellationRequested)
+                {
+                    log($"Launcher update download retry: {ex.Message}");
+                    try { File.Delete(path); } catch { }
+                    await Task.Delay(TimeSpan.FromMilliseconds(attempt * 700), ct);
+                }
+            }
+            return null;
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
+            try { File.Delete(path); } catch { }
             log($"Launcher update: download failed: {ex.Message}");
             return null;
         }
@@ -196,10 +227,11 @@ public static class SelfUpdater
 
     public static bool VerifySha256(string filePath, string expectedSha256, Action<string> log)
     {
-        if (string.IsNullOrWhiteSpace(expectedSha256))
+        if (string.IsNullOrWhiteSpace(expectedSha256) || expectedSha256.Trim().Length != 64 ||
+            !expectedSha256.Trim().All(Uri.IsHexDigit))
         {
-            log("Launcher update: no SHA256 provided; skipping verification.");
-            return true;
+            log("Launcher update: missing or malformed SHA-256; refusing the package.");
+            return false;
         }
 
         try
@@ -236,159 +268,214 @@ public static class SelfUpdater
         return sb.ToString();
     }
 
-    // ✅ IMPORTANT: apply-mode must NOT run from install dir
-    public static void StartApplyUpdateAndExit(string zipPath, Action<string> log)
+    // Run the helper from a temporary copy, then apply a verified archive after
+    // the active launcher has closed. The helper keeps a rollback copy until the
+    // replacement has been written successfully.
+    public static bool CanApplyInPlace()
+    {
+        try
+        {
+            var targetDir = GetUpdateTargetDirectory(GetExePath());
+            Directory.CreateDirectory(targetDir);
+            var probe = Path.Combine(targetDir, ".fabrifroge-write-" + Guid.NewGuid().ToString("N"));
+            using (File.Create(probe)) { }
+            File.Delete(probe);
+            return true;
+        }
+        catch { return false; }
+    }
+
+    public static bool StartApplyUpdateAndExit(string archivePath, Action<string> log)
     {
         try
         {
             var pid = Environment.ProcessId;
-
             var installedExePath = GetExePath();
-            var installedDir = Path.GetDirectoryName(installedExePath) ?? AppContext.BaseDirectory;
-            var exeName = Path.GetFileName(installedExePath);
-
-            ApplyLog("=== StartApplyUpdateAndExit ===");
-            ApplyLog($"installedExePath={installedExePath}");
-            ApplyLog($"installedDir={installedDir}");
-            ApplyLog($"exeName={exeName}");
-            ApplyLog($"zipPath={zipPath}");
-            ApplyLog($"pid={pid}");
-
-            // Helper folder
+            var targetDir = GetUpdateTargetDirectory(installedExePath);
+            var exeRelativePath = Path.GetRelativePath(targetDir, installedExePath);
             var helperDir = Path.Combine(Path.GetTempPath(), $"FabriFrogeLauncher_apply_{Guid.NewGuid():N}");
             Directory.CreateDirectory(helperDir);
-
-            ApplyLog($"helperDir={helperDir}");
-            log($"Launcher update: helperDir={helperDir}");
-
-            // Copy install -> helper so helper loads DLLs from TEMP, not install folder
-            CopyDirectoryRecursiveWithRetries(installedDir, helperDir, retries: 20, delayMs: 200);
-
-            var helperExePath = Path.Combine(helperDir, exeName);
-            if (!File.Exists(helperExePath))
-            {
-                var found = FindFirstExe(helperDir);
-                if (!string.IsNullOrWhiteSpace(found)) helperExePath = found!;
-            }
-
-            if (!File.Exists(helperExePath))
-                throw new InvalidOperationException("Helper EXE not found after copy.");
+            CopyDirectoryRecursiveWithRetries(targetDir, helperDir, retries: 10, delayMs: 200);
+            var helperExePath = Path.Combine(helperDir, exeRelativePath);
+            if (!File.Exists(helperExePath)) throw new InvalidOperationException("Temporary update helper executable is missing.");
             EnsureExecutable(helperExePath);
 
-            ApplyLog($"helperExePath={helperExePath}");
-
-            ApplyLog($"Launching helper apply-mode: {helperExePath}");
-
+            ApplyLog($"Starting helper. target={targetDir}; executable={exeRelativePath}; pid={pid}");
             var psi = new ProcessStartInfo
             {
                 FileName = helperExePath,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 WindowStyle = ProcessWindowStyle.Hidden,
-                WorkingDirectory = helperDir
+                WorkingDirectory = Path.GetDirectoryName(helperExePath) ?? helperDir
             };
             psi.ArgumentList.Add(ApplyArg);
-            psi.ArgumentList.Add(zipPath);
-            psi.ArgumentList.Add(installedDir);
-            psi.ArgumentList.Add(exeName);
+            psi.ArgumentList.Add(archivePath);
+            psi.ArgumentList.Add(targetDir);
+            psi.ArgumentList.Add(exeRelativePath);
             psi.ArgumentList.Add(pid.ToString());
-
-            // ✅ Flag to stop App.xaml.cs from redirecting helper back to install root
             psi.Environment["FF_UPDATER_HELPER"] = "1";
-
             Process.Start(psi);
-
-            ApplyLog("Hard exiting current process now...");
             Environment.Exit(0);
+            return true;
         }
         catch (Exception ex)
         {
-            ApplyLog("StartApplyUpdateAndExit exception: " + ex);
-            log($"Launcher update: failed to start apply mode: {ex}");
+            ApplyLog("Updater handoff failed: " + ex);
+            log($"Launcher update handoff failed: {ex.Message}");
+            return false;
         }
     }
 
     public static async Task<int> RunApplyUpdateModeAsync(string[] args, Action<string> log)
     {
+        string? extractDir = null;
         try
         {
             if (args.Length < 5 || !string.Equals(args[0], ApplyArg, StringComparison.OrdinalIgnoreCase))
                 return -1;
+            var archivePath = args[1];
+            var targetDir = Path.GetFullPath(args[2]);
+            var exeRelativePath = args[3];
+            if (Path.IsPathRooted(exeRelativePath) || exeRelativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Any(part => part == ".."))
+                throw new InvalidDataException("Updater executable path is unsafe.");
+            if (!int.TryParse(args[4], out var oldPid)) return 3;
 
-            var zipPath = args[1];
-            var targetDir = args[2];
-            var exeName = args[3];
-            var pidStr = args[4];
+            log($"Apply mode: target={targetDir}; executable={exeRelativePath}; oldPid={oldPid}");
+            await WaitForProcessExitOrTimeoutAsync(oldPid, secondsTimeout: 60, log);
+            if (!File.Exists(archivePath)) throw new FileNotFoundException("Update archive is missing.", archivePath);
 
-            log($"Apply mode: zip={zipPath}");
-            log($"Apply mode: targetDir={targetDir}");
-            log($"Apply mode: exeName={exeName}");
-            log($"Apply mode: oldPid={pidStr}");
-
-            if (!int.TryParse(pidStr, out var oldPid))
-            {
-                log($"Apply mode: invalid pid: {pidStr}");
-                return 3;
-            }
-
-            log($"Apply mode: waiting for old PID {oldPid} to exit...");
-            await WaitForProcessExitOrTimeoutAsync(oldPid, secondsTimeout: 30, log);
-
-            if (!File.Exists(zipPath))
-            {
-                log($"Apply mode: zip missing: {zipPath}");
-                return 4;
-            }
-
-            Directory.CreateDirectory(targetDir);
-
-            var extractDir = Path.Combine(Path.GetTempPath(), $"FabriFrogeLauncher_extract_{Guid.NewGuid():N}");
+            extractDir = Path.Combine(Path.GetTempPath(), $"FabriFrogeLauncher_extract_{Guid.NewGuid():N}");
             Directory.CreateDirectory(extractDir);
-
-            log($"Apply mode: extracting zip -> {extractDir}");
-            if (zipPath.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase))
+            if (archivePath.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase))
             {
-                await using var archiveStream = File.OpenRead(zipPath);
-                using var gzip = new GZipStream(archiveStream, CompressionMode.Decompress);
+                await using var stream = File.OpenRead(archivePath);
+                using var gzip = new GZipStream(stream, CompressionMode.Decompress);
                 TarFile.ExtractToDirectory(gzip, extractDir, overwriteFiles: true);
             }
-            else ZipFile.ExtractToDirectory(zipPath, extractDir, overwriteFiles: true);
+            else ZipFile.ExtractToDirectory(archivePath, extractDir, overwriteFiles: true);
 
-            // ✅ Use robocopy FIRST (better with transient locks)
-            log($"Apply mode: robocopy mirror -> {targetDir}");
-            var payloadRoot = FindPayloadRoot(extractDir, exeName);
-            CopyDirectoryRecursive(payloadRoot, targetDir);
+            var payloadRoot = FindPayloadRootForUpdate(extractDir, exeRelativePath, targetDir.EndsWith(".app", StringComparison.OrdinalIgnoreCase));
+            var targetExe = Path.Combine(targetDir, exeRelativePath);
+            if (targetDir.EndsWith(".app", StringComparison.OrdinalIgnoreCase))
+                ReplaceAppBundle(payloadRoot, targetDir, log);
+            else
+                ApplyOverlayTransactional(payloadRoot, targetDir, log);
 
-            // cleanup
-            try { File.Delete(zipPath); } catch { }
-            try { Directory.Delete(extractDir, recursive: true); } catch { }
-
-            var newExePath = Path.Combine(targetDir, exeName);
-            if (!File.Exists(newExePath))
-            {
-                var found = FindFirstExe(targetDir);
-                if (!string.IsNullOrWhiteSpace(found))
-                    newExePath = found!;
-            }
-            EnsureExecutable(newExePath);
-
-            log($"Apply mode: relaunching: {newExePath}");
-
-            var psi = new ProcessStartInfo
-            {
-                FileName = newExePath,
-                UseShellExecute = true,
-                WorkingDirectory = Path.GetDirectoryName(newExePath) ?? targetDir
-            };
-            Process.Start(psi);
-
+            targetExe = Path.Combine(targetDir, exeRelativePath);
+            if (!File.Exists(targetExe)) throw new InvalidOperationException("Updated launcher executable is missing.");
+            EnsureExecutable(targetExe);
+            ApplyLog("Update completed successfully; relaunching new executable.");
+            Process.Start(new ProcessStartInfo { FileName = targetExe, UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(targetExe)! });
             return 0;
         }
         catch (Exception ex)
         {
-            log($"Apply mode error: {ex}");
+            ApplyLog("Apply mode failed: " + ex);
+            log($"Apply mode failed and rollback was attempted: {ex.Message}");
             return 1;
         }
+        finally
+        {
+            try { if (extractDir != null && Directory.Exists(extractDir)) Directory.Delete(extractDir, true); } catch { }
+            try { if (args.Length > 1 && File.Exists(args[1])) File.Delete(args[1]); } catch { }
+        }
+    }
+
+    private static string GetUpdateTargetDirectory(string executablePath)
+    {
+        var directory = Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory;
+        if (OperatingSystem.IsMacOS())
+        {
+            var app = Directory.GetParent(directory)?.Parent;
+            if (app?.FullName.EndsWith(".app", StringComparison.OrdinalIgnoreCase) == true)
+                return app.FullName;
+        }
+        return directory;
+    }
+
+    private static string FindPayloadRootForUpdate(string extractDir, string exeRelativePath, bool isMacApp)
+    {
+        var relative = exeRelativePath.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
+        if (isMacApp)
+        {
+            foreach (var app in Directory.EnumerateDirectories(extractDir, "*.app", SearchOption.AllDirectories))
+                if (File.Exists(Path.Combine(app, relative))) return app;
+        }
+        var direct = Path.Combine(extractDir, relative);
+        if (File.Exists(direct)) return Path.GetDirectoryName(direct)!;
+        var match = Directory.EnumerateFiles(extractDir, Path.GetFileName(relative), SearchOption.AllDirectories).FirstOrDefault();
+        if (match == null) throw new InvalidDataException("Update archive has no launcher executable.");
+        return Path.GetDirectoryName(match)!;
+    }
+
+    private static void ReplaceAppBundle(string stagedApp, string targetApp, Action<string> log)
+    {
+        var parent = Path.GetDirectoryName(targetApp)!;
+        var staged = Path.Combine(parent, Path.GetFileName(targetApp) + ".new-" + Guid.NewGuid().ToString("N"));
+        var backup = Path.Combine(parent, Path.GetFileName(targetApp) + ".backup-" + Guid.NewGuid().ToString("N"));
+        CopyDirectoryRecursive(stagedApp, staged);
+        var hadOriginal = Directory.Exists(targetApp);
+        try
+        {
+            if (hadOriginal) Directory.Move(targetApp, backup);
+            Directory.Move(staged, targetApp);
+            if (hadOriginal) Directory.Delete(backup, true);
+        }
+        catch
+        {
+            try { if (Directory.Exists(targetApp)) Directory.Delete(targetApp, true); } catch { }
+            if (hadOriginal && Directory.Exists(backup)) Directory.Move(backup, targetApp);
+            throw;
+        }
+        finally { try { if (Directory.Exists(staged)) Directory.Delete(staged, true); } catch { } }
+        log("Mac application bundle replaced transactionally.");
+    }
+
+    private static void ApplyOverlayTransactional(string source, string target, Action<string> log)
+    {
+        Directory.CreateDirectory(target);
+        var backupRoot = Path.Combine(Path.GetTempPath(), "FabriFrogeLauncher_rollback_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(backupRoot);
+        var changed = new System.Collections.Generic.List<(string target, string? backup)>();
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+            {
+                var relative = Path.GetRelativePath(source, file);
+                var destination = Path.GetFullPath(Path.Combine(target, relative));
+                if (!destination.StartsWith(Path.GetFullPath(target).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar,
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                    throw new InvalidDataException("Update archive contains an unsafe file path.");
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                string? backup = null;
+                if (File.Exists(destination))
+                {
+                    backup = Path.Combine(backupRoot, relative);
+                    Directory.CreateDirectory(Path.GetDirectoryName(backup)!);
+                    File.Copy(destination, backup, true);
+                }
+                changed.Add((destination, backup));
+                var staged = destination + ".update-" + Guid.NewGuid().ToString("N");
+                File.Copy(file, staged, true);
+                File.Move(staged, destination, true);
+            }
+        }
+        catch
+        {
+            foreach (var item in changed.AsEnumerable().Reverse())
+            {
+                try
+                {
+                    if (item.backup == null) File.Delete(item.target);
+                    else File.Copy(item.backup, item.target, true);
+                }
+                catch (Exception rollbackError) { ApplyLog("Rollback error: " + rollbackError); }
+            }
+            throw;
+        }
+        finally { try { Directory.Delete(backupRoot, true); } catch { } }
+        log("Launcher files replaced transactionally.");
     }
 
     private static async Task WaitForProcessExitOrTimeoutAsync(int pid, int secondsTimeout, Action<string> log)

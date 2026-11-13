@@ -38,13 +38,18 @@ See [CmlLib's MSAL client-ID guide](https://cmllib.github.io/CmlLib.Core-wiki/en
 The `.github/workflows/release-launcher.yml` workflow builds self-contained release packages for all six RIDs (`win-x64`, `win-arm64`, `osx-x64`, `osx-arm64`, `linux-x64`, and `linux-arm64`):
 
 - Windows: `.exe` setup installers and portable `.zip` archives for x64 and ARM64.
-- macOS: `.dmg` installers and `.tar.gz` self-update archives for Intel and Apple silicon. The DMGs include an Applications shortcut. They are unsigned and may show Gatekeeper warnings until signed and notarized by the publisher.
+- macOS: `.dmg` installers and `.tar.gz` self-update archives for Intel and Apple silicon. The DMGs include an Applications shortcut. Tagged releases are signed with Developer ID and notarized before publication; configure the Apple signing secrets listed below in GitHub Actions before creating a release tag.
 - Linux: `.deb` installers and `.tar.gz` self-update archives for x64 and ARM64.
 
-Set the project version, then push a matching tag like `launcher-v1.1.8.10`. Add the rotated server password to GitHub repository Actions secrets as `FABRIFROGE_SFTP_PASSWORD`. The workflow creates a GitHub release and uploads installers, self-update archives, checksums, and `launcher-self-latest.json` to `files.fabrifroge.com`; the cross-platform launcher reads `/launcher/v2/self/latest.json`. The legacy Windows-only updater remains at `/launcher/self/latest.json`. Cross-platform modpack data comes from `/launcher/v2/`.
+Set the project version, then push a matching tag like `launcher-v1.1.8.11`. Add the rotated server password to GitHub repository Actions secrets as `FABRIFROGE_SFTP_PASSWORD`. The workflow creates a GitHub release and uploads installers, self-update archives, checksums, and `launcher-self-latest.json` to `files.fabrifroge.com`; the cross-platform launcher reads `/launcher/v2/self/latest.json`. The legacy Windows-only updater remains at `/launcher/self/latest.json`. Cross-platform modpack data comes from `/launcher/v2/`.
 
 Modpack publishing is independent. Run `FabriFrogeLauncher/run-publish-build.bat` or `release/publish-modpack.ps1` to upload only pack metadata and files. It does not modify the launcher feed or upload a launcher binary. The old `publish-release.ps1` remains as a compatibility entry point to the modpack-only publisher.
 
 ## Verification limits
 
 The project targets six RIDs. macOS installers need Apple Developer signing and notarization to avoid Gatekeeper warnings. The hard-coded client ID must be allow-listed for Minecraft Xbox authentication.
+
+
+### macOS release signing
+
+Add these GitHub Actions secrets before tagging a release: APPLE_CERTIFICATE_P12_BASE64 (base64 exported Developer ID Application certificate), APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_TEAM_ID, and APPLE_APP_SPECIFIC_PASSWORD. Tagged macOS builds fail closed if signing or notarization credentials are missing; manually dispatched builds can still make unsigned preview artifacts.

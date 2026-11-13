@@ -35,6 +35,32 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
+      - name: Import Apple Developer ID certificate
+        if: startsWith(matrix.rid, 'osx-')
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${APPLE_CERTIFICATE_P12_BASE64:-}" || -z "${APPLE_CERTIFICATE_PASSWORD:-}" || -z "${APPLE_SIGNING_IDENTITY:-}" ]]; then
+            if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+              echo "Tagged macOS releases require Apple Developer ID signing secrets." >&2
+              exit 1
+            fi
+            echo "Unsigned macOS preview package only; tagged releases are blocked without signing credentials."
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/fabrifroge-signing.keychain-db"
+          cert="$RUNNER_TEMP/fabrifroge-signing.p12"
+          python3 -c 'import base64,os,pathlib; pathlib.Path(os.environ["RUNNER_TEMP"], "fabrifroge-signing.p12").write_bytes(base64.b64decode(os.environ["APPLE_CERTIFICATE_P12_BASE64"]))'
+          security create-keychain -p "" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "" "$keychain"
+          security import "$cert" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm -f "$cert"
       - name: Read version
         id: version
         shell: pwsh
@@ -46,6 +72,11 @@ jobs:
       - name: Publish self-contained launcher
         run: dotnet publish FabriFrogeLauncher/FabriFrogeLauncher/FabriFrogeLauncher.csproj -c Release -r ${{ matrix.rid }} --self-contained true -o artifacts/publish/${{ matrix.rid }}
       - name: Build ZIP or native macOS/Linux installer
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: python FabriFrogeLauncher/FabriFrogeLauncher/package-platform.py --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }} --source artifacts/publish/${{ matrix.rid }} --output artifacts/release
       - name: Build Windows setup installer
         if: startsWith(matrix.rid, 'win-')
@@ -131,6 +162,7 @@ jobs:
           chmod 600 "$HOME/.ssh/known_hosts"
           batch_file="$(mktemp)"
           trap 'rm -f "$batch_file"' EXIT
+          version="${GITHUB_REF_NAME#launcher-v}"
           printf '%s\n' \
             'cd "/C:/Users/Branserver/Downloads/nginx-1.26.3/www/files"' \
             '-mkdir launcher' \
@@ -138,7 +170,9 @@ jobs:
             '-mkdir launcher/v2' \
             '-mkdir launcher/v2/self' \
             '-mkdir launcher/v2/self/builds' \
-            '-mkdir launcher/v2/self/installers' > "$batch_file"
+            '-mkdir launcher/v2/self/installers' \
+            '-mkdir launcher/v2/self/releases' > "$batch_file"
+          printf '%s\n' "-mkdir launcher/v2/self/releases/$version" >> "$batch_file"
           for package in artifacts/FabriFrogeLauncher-*; do
             [[ -f "$package" ]] || continue
             case "$package" in
@@ -149,14 +183,10 @@ jobs:
             printf 'ls -l "%s%s"\n' "$destination" "${package##*/}" >> "$batch_file"
           done
           printf '%s\n' \
-            'put FabriFrogeLauncher/release/legacy/launcher-self-latest.json launcher/self/latest.json' \
             'put artifacts/SHA256SUMS.txt launcher/v2/self/SHA256SUMS.txt' \
-            'put artifacts/launcher-self-latest.json launcher/v2/self/latest.json' \
-            'put artifacts/launcher-self-latest.json "/C:/Users/Branserver/Downloads/nginx-1.26.3/www/download/latest.json"' \
-            'ls -l launcher/self/latest.json' \
+            "put artifacts/launcher-self-latest.json launcher/v2/self/releases/$version/launcher-self-latest.json" \
             'ls -l launcher/v2/self/SHA256SUMS.txt' \
-            'ls -l launcher/v2/self/latest.json' \
-            'ls -l "/C:/Users/Branserver/Downloads/nginx-1.26.3/www/download/latest.json"' >> "$batch_file"
+            "ls -l launcher/v2/self/releases/$version/launcher-self-latest.json" >> "$batch_file"
           log_file="$RUNNER_TEMP/sftp-release.log"
           trap 'rm -f "$batch_file"' EXIT
           set +e
@@ -179,9 +209,6 @@ jobs:
           expected = {p.name: p.stat().st_size for p in root.glob("FabriFrogeLauncher-*")}
           for name in ("SHA256SUMS.txt", "launcher-self-latest.json"):
               expected[name] = (root / name).stat().st_size
-          expected["download:latest.json"] = (root / "launcher-self-latest.json").stat().st_size
-          legacy = pathlib.Path("FabriFrogeLauncher/release/legacy/launcher-self-latest.json")
-          expected["legacy:latest.json"] = legacy.stat().st_size
           actual = {}
           for line in pathlib.Path(sys.argv[1]).read_text(errors="replace").splitlines():
               fields = line.strip().split()
@@ -194,12 +221,8 @@ jobs:
               path = pathlib.PurePosixPath(" ".join(fields[8:]))
               name = path.name
               rendered_path = str(path)
-              if rendered_path.endswith("launcher/self/latest.json"):
-                  actual["legacy:latest.json"] = size
-              elif rendered_path.endswith("launcher/v2/self/latest.json"):
+              if "/launcher/v2/self/releases/" in rendered_path and rendered_path.endswith("/launcher-self-latest.json"):
                   actual["launcher-self-latest.json"] = size
-              elif rendered_path.endswith("www/download/latest.json"):
-                  actual["download:latest.json"] = size
               elif name in expected:
                   actual[name] = size
           for name, size in expected.items():

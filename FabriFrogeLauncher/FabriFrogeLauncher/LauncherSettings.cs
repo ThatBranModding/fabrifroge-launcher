@@ -46,7 +46,13 @@ public sealed class LauncherSettings
         {
             var path = GetSettingsPath();
             var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(path, json);
+            var tmp = path + ".tmp-" + Guid.NewGuid().ToString("N");
+            File.WriteAllText(tmp, json);
+            if (!OperatingSystem.IsWindows())
+            {
+                try { File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite); } catch { }
+            }
+            File.Move(tmp, path, overwrite: true);
         }
         catch (Exception ex)
         {

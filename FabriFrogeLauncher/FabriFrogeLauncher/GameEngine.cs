@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
 using CmlLib.Core.ProcessBuilder;
@@ -45,6 +46,15 @@ public static class GameEngine
             string.Join("\n", candidates));
     }
 
+    private static int ClampRamMb(int requestedMb)
+    {
+        var selected = Math.Clamp(requestedMb, 2048, 65536);
+        var availableBytes = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
+        if (availableBytes <= 0) return selected;
+        var safeLimitMb = (int)Math.Clamp(availableBytes / (1024L * 1024L) - 2048, 2048, 65536);
+        return Math.Min(selected, safeLimitMb);
+    }
+
     /// <summary>
     /// Builds a safe, modern set of JVM args for Java 21 + modded Minecraft.
     /// Conservative defaults (no flags that commonly break systems).
@@ -64,7 +74,6 @@ public static class GameEngine
             "-XX:MaxGCPauseMillis=200",
             "-XX:+UnlockExperimentalVMOptions",
             "-XX:+DisableExplicitGC",
-            "-XX:+AlwaysPreTouch",
 
             "-XX:G1NewSizePercent=20",
             "-XX:G1MaxNewSizePercent=60",
@@ -92,6 +101,8 @@ public static class GameEngine
             return;
 
         var original = proc.StartInfo.Arguments ?? "";
+        // CmlLib may already emit memory flags; keep exactly one source of truth.
+        original = Regex.Replace(original, @"(?i)(?<!\S)-Xm[sx]\S+", "");
 
         int cpIndex = IndexOfToken(original, " -cp ");
         if (cpIndex < 0)
@@ -156,14 +167,12 @@ public static class GameEngine
 
         proc.Exited += OnExit;
 
-        if (ct.CanBeCanceled)
+        using var registration = ct.Register(() =>
         {
-            ct.Register(() =>
-            {
-                proc.Exited -= OnExit;
-                tcs.TrySetCanceled(ct);
-            });
-        }
+            proc.Exited -= OnExit;
+            try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch { }
+            tcs.TrySetCanceled(ct);
+        });
 
         if (proc.HasExited)
         {
@@ -225,9 +234,12 @@ public static class GameEngine
 
         var session = sessionOrNull ?? MSession.CreateOfflineSession(offlineUsernameFallback);
 
-        var jvmArgs = BuildDefaultJvmArgs(ramMb);
+        var effectiveRamMb = ClampRamMb(ramMb);
+        if (effectiveRamMb != ramMb)
+            log($"RAM selection capped to {effectiveRamMb} MB based on available system memory.");
+        var jvmArgs = BuildDefaultJvmArgs(effectiveRamMb);
 
-        log($"RAM selected: {ramMb} MB");
+        log($"RAM selected: {effectiveRamMb} MB");
         log("JVM Args:");
         foreach (var a in jvmArgs)
             log($"  {a}");
@@ -235,7 +247,7 @@ public static class GameEngine
         var opt = new MLaunchOption
         {
             Session = session,
-            MaximumRamMb = ramMb,
+            MaximumRamMb = effectiveRamMb,
             JavaPath = javaExe
         };
 

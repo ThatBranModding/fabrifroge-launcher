@@ -1,4 +1,6 @@
 using System.Net.Http;
+using System.Diagnostics;
+using System.IO;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -32,6 +34,7 @@ public partial class MainWindow : Window
     private MSession? _session;
     private PackManifest? _manifest;
     private SelfUpdater.LauncherPackage? _launcherUpdatePackage;
+    private SelfUpdater.LauncherPackage? _launcherInstallerPackage;
     private string? _launcherUpdateVersion;
     private MainAction _mainAction = MainAction.Checking;
     private bool _startupChecksComplete;
@@ -124,12 +127,12 @@ public partial class MainWindow : Window
 
     private async Task InitializeAsync()
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var packCheck = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         try
         {
-            var latest = await Net.GetJsonAsync<LatestInfo>(_http, LatestUrl, cts.Token);
+            var latest = await Net.GetJsonAsync<LatestInfo>(_http, LatestUrl, packCheck.Token);
             if (!string.IsNullOrWhiteSpace(latest.ManifestUrl))
-                _manifest = await Net.GetJsonAsync<PackManifest>(_http, latest.ManifestUrl, cts.Token);
+                _manifest = await Net.GetJsonAsync<PackManifest>(_http, latest.ManifestUrl, packCheck.Token);
             else if (!string.IsNullOrWhiteSpace(latest.PackId))
                 _manifest = new PackManifest { PackId = latest.PackId, Version = latest.LatestVersion };
             RefreshVersion();
@@ -148,10 +151,12 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) { Log($"Account startup check failed: {ex.Message}"); }
 
-        try { await CheckLauncherUpdateAsync(false, cts.Token); }
+        using var launcherCheck = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        try { await CheckLauncherUpdateAsync(false, launcherCheck.Token); }
         catch (Exception ex) { Log($"Launcher update check failed: {ex.Message}"); }
 
-        try { await AutoCheckPackAsync(cts.Token); }
+        using var autoPackCheck = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        try { await AutoCheckPackAsync(autoPackCheck.Token); }
         catch (Exception ex)
         {
             _packStatusKnown = false;
@@ -165,12 +170,12 @@ public partial class MainWindow : Window
 
     private async Task ShowStartupUpdatePromptIfNeededAsync()
     {
-        if (!_windowOpened || !_startupChecksComplete || _startupUpdatePromptShown || _launcherUpdatePackage == null)
+        if (!_windowOpened || !_startupChecksComplete || _startupUpdatePromptShown || _launcherUpdateVersion == null)
             return;
 
         _startupUpdatePromptShown = true;
         string? updateError = null;
-        while (_launcherUpdatePackage != null)
+        while (_launcherUpdateVersion != null)
         {
             var dialog = new LauncherUpdateDialog(SelfUpdater.GetCurrentVersion(), _launcherUpdateVersion ?? "", updateError);
             var choice = await dialog.ShowDialog<LauncherUpdateChoice>(this);
@@ -211,6 +216,7 @@ public partial class MainWindow : Window
 
     private async Task RunAsync(string label, Func<CancellationToken, Task> action)
     {
+        if (_isBusy) return;
         _operation.Cancel(); _operation.Dispose(); _operation = new CancellationTokenSource();
         SetBusy(true); Status.Text = label; Progress.Value = 0;
         try { await action(_operation.Token); Status.Text = label + " complete"; }
@@ -222,16 +228,20 @@ public partial class MainWindow : Window
     private void SetBusy(bool busy)
     {
         _isBusy = busy;
+        InstallPath.IsEnabled = !busy;
+        BrowseButton.IsEnabled = !busy;
+        RamInput.IsEnabled = !busy;
+        PlayMenuButton.IsEnabled = !busy;
         UpdateMainActionButton();
     }
 
     private void UpdateMainActionButton()
     {
-        if (!_startupChecksComplete || (!_packStatusKnown && _launcherUpdatePackage == null))
+        if (!_startupChecksComplete || (!_packStatusKnown && _launcherUpdateVersion == null))
             _mainAction = MainAction.Checking;
-        else if (!_packStatusKnown && _launcherUpdatePackage != null)
+        else if (!_packStatusKnown && _launcherUpdateVersion != null)
             _mainAction = MainAction.UpdateLauncher;
-        else if (_launcherUpdatePackage != null)
+        else if (_launcherUpdateVersion != null)
             _mainAction = MainAction.UpdateLauncher;
         else if (!_packInstalled)
             _mainAction = MainAction.Install;
@@ -253,7 +263,7 @@ public partial class MainWindow : Window
 
     private void UpdateStartupStatus()
     {
-        if (_launcherUpdatePackage != null) Status.Text = $"Launcher update available: {_launcherUpdateVersion}";
+        if (_launcherUpdateVersion != null) Status.Text = $"Launcher update available: {_launcherUpdateVersion}";
         else if (!_packStatusKnown) Status.Text = "Modpack information unavailable";
         else if (!_packInstalled) Status.Text = "Install available";
         else if (_packUpdateAvailable) Status.Text = "Modpack update available";
@@ -367,11 +377,12 @@ public partial class MainWindow : Window
     {
         await RunAsync(verify ? "Repairing game files" : "Installing or updating", async ct =>
         {
+            var installRoot = ValidateInstallRoot(Root);
             var manifest = await GetManifestAsync(ct);
-            await JavaRuntime.EnsureTemurin21Async(_http, Root, Log, ct);
-            var changed = await Installer.InstallOrUpdateAsync(_http, Root, manifest, Log,
+            await JavaRuntime.EnsureTemurin21Async(_http, installRoot, Log, ct);
+            var changed = await Installer.InstallOrUpdateAsync(_http, installRoot, manifest, Log,
                 p => Dispatcher.UIThread.Post(() => { Progress.Value = p.FilesTotal == 0 ? 0 : (double)p.FilesDone / p.FilesTotal * 100; Status.Text = $"{p.FilesDone}/{p.FilesTotal} {p.CurrentFile}"; }), ct, verify);
-            await NeoForgeClientInstaller.EnsureInstalledAsync(_http, Path.Combine(Installer.GetInstanceRoot(Root, manifest.PackId), ".minecraft"), JavaRuntime.JavawPath(Root), manifest.Loader?.Version ?? "", Log, ct);
+            await NeoForgeClientInstaller.EnsureInstalledAsync(_http, Path.Combine(Installer.GetInstanceRoot(installRoot, manifest.PackId), ".minecraft"), JavaRuntime.JavawPath(installRoot), manifest.Loader?.Version ?? "", Log, ct);
             RefreshVersion();
             UpdateStartupStatus();
             Log(changed ? "Pack files updated." : "Pack files already match the manifest.");
@@ -404,11 +415,12 @@ public partial class MainWindow : Window
 
     private async Task LaunchGameAsync(CancellationToken ct)
     {
+        var installRoot = ValidateInstallRoot(Root);
         var m = _manifest ?? await GetManifestAsync(ct);
         var session = await EnsureFreshSessionForPlayAsync(ct);
         var user = session.Username ?? Environment.UserName;
-        var gameDirectory = Path.Combine(Installer.GetInstanceRoot(Root, m.PackId), ".minecraft");
-        await GameEngine.LaunchAsync(_http, Root, m, session, user, CurrentRamMb, Log, ct,
+        var gameDirectory = Path.Combine(Installer.GetInstanceRoot(installRoot, m.PackId), ".minecraft");
+        await GameEngine.LaunchAsync(_http, installRoot, m, session, user, CurrentRamMb, Log, ct,
             gameDirectory);
     }
     private async Task<MSession> EnsureFreshSessionForPlayAsync(CancellationToken ct)
@@ -439,9 +451,17 @@ public partial class MainWindow : Window
     private async void Switch_Click(object? s, RoutedEventArgs e) => await RunAsync("Switching account", async ct => { Log("Opening the default browser for Microsoft sign-in..."); _session = await AuthService.SwapAccountsAsync(Root, Log, ct); AccountLabel.Text = _session.Username; });
     private int CurrentRamMb => (RamInput.SelectedItem as RamOption)?.MemoryMb ?? 8192;
 
+    private static string ValidateInstallRoot(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || !Path.IsPathFullyQualified(value))
+            throw new InvalidDataException("Choose an absolute install folder path.");
+        return Path.GetFullPath(value);
+    }
+
     private void SaveLauncherSettings()
     {
-        _settings.InstallDirectory = Root;
+        try { _settings.InstallDirectory = ValidateInstallRoot(InstallPath.Text ?? DefaultInstallRoot()); }
+        catch (Exception ex) { Log($"Install folder not saved: {ex.Message}"); return; }
         _settings.RamMb = CurrentRamMb;
         _settings.Save(Log);
     }
@@ -471,6 +491,7 @@ public partial class MainWindow : Window
     {
         var info = await SelfUpdater.FetchLatestAsync(_http, Log, ct);
         _launcherUpdatePackage = null;
+        _launcherInstallerPackage = null;
         _launcherUpdateVersion = null;
         if (info?.Version is null)
         {
@@ -479,21 +500,26 @@ public partial class MainWindow : Window
             UpdateMainActionButton();
             return;
         }
+
         var current = SelfUpdater.GetCurrentVersion();
         if (SelfUpdater.IsNewer(info.Version, current, out var parsed))
         {
+            _launcherUpdateVersion = parsed;
             var package = info.GetPlatformPackage();
-            if (package == null || string.IsNullOrWhiteSpace(package.Url) || string.IsNullOrWhiteSpace(package.Sha256))
+            if (package != null && !string.IsNullOrWhiteSpace(package.Url) &&
+                !string.IsNullOrWhiteSpace(package.Sha256) && package.Sha256.Length == 64)
+                _launcherUpdatePackage = package;
+            var installer = info.GetPlatformInstaller();
+            if (installer != null && !string.IsNullOrWhiteSpace(installer.Url) &&
+                !string.IsNullOrWhiteSpace(installer.Sha256) && installer.Sha256.Length == 64)
+                _launcherInstallerPackage = installer;
+
+            if (_launcherUpdatePackage == null && _launcherInstallerPackage == null)
             {
-                Log($"Launcher {parsed} is available, but update metadata has no verified package for {System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier}.");
+                Log($"Launcher {parsed} is available but no package exists for this platform.");
                 if (showStatus) Status.Text = "Launcher update package unavailable";
             }
-            else
-            {
-                _launcherUpdatePackage = package;
-                _launcherUpdateVersion = parsed;
-                Log($"Launcher update available: {current} -> {parsed}.");
-            }
+            else Log($"Launcher update available: {current} -> {parsed}.");
         }
         else Log($"Launcher is up to date ({current}).");
 
@@ -503,20 +529,31 @@ public partial class MainWindow : Window
 
     private async Task ApplyLauncherUpdateAsync(CancellationToken ct)
     {
-        if (_launcherUpdatePackage == null)
+        if (_launcherUpdateVersion == null)
             await CheckLauncherUpdateAsync(false, ct);
+
         var package = _launcherUpdatePackage;
-        if (package == null || string.IsNullOrWhiteSpace(package.Url) || string.IsNullOrWhiteSpace(package.Sha256))
+        if (package != null && !string.IsNullOrWhiteSpace(package.Url) &&
+            !string.IsNullOrWhiteSpace(package.Sha256) && SelfUpdater.CanApplyInPlace())
         {
-            UpdateStartupStatus();
-            return;
+            var archive = await SelfUpdater.DownloadUpdateAsync(_http, package.Url, Log, ct)
+                ?? throw new InvalidOperationException("Launcher update download failed.");
+            if (!SelfUpdater.VerifySha256(archive, package.Sha256, Log))
+            {
+                try { File.Delete(archive); } catch { }
+                throw new InvalidDataException("Downloaded launcher update failed SHA-256 verification.");
+            }
+            if (SelfUpdater.StartApplyUpdateAndExit(archive, Log)) return;
         }
 
-        var archive = await SelfUpdater.DownloadUpdateAsync(_http, package.Url, Log, ct)
-            ?? throw new InvalidOperationException("Launcher update download failed.");
-        if (!SelfUpdater.VerifySha256(archive, package.Sha256, Log))
-            throw new InvalidDataException("Downloaded launcher update failed SHA-256 verification.");
-        SelfUpdater.StartApplyUpdateAndExit(archive, Log);
+        var installer = _launcherInstallerPackage;
+        if (installer == null || string.IsNullOrWhiteSpace(installer.Url))
+            throw new UnauthorizedAccessException("The launcher folder cannot be updated automatically, and no native installer is available.");
+        var platformName = OperatingSystem.IsMacOS() ? "macOS" : OperatingSystem.IsLinux() ? "Linux" : "Windows";
+        Log($"Opening the {platformName} installer for version {_launcherUpdateVersion}.");
+        Process.Start(new ProcessStartInfo(installer.Url) { UseShellExecute = true });
+        _launcherUpdateVersion = null;
+        Close();
     }
 
     private Task AutoCheckPackAsync(CancellationToken ct)
