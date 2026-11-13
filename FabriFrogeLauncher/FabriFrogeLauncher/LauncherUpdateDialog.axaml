@@ -1,0 +1,23 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="FabriFrogeLauncher.LauncherUpdateDialog"
+        Title="Launcher update required"
+        Width="430" Height="260"
+        CanResize="False" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        SystemDecorations="None" Background="Transparent">
+  <Border Background="#14283A" BorderBrush="#91A9BA" BorderThickness="1" CornerRadius="18" Padding="22">
+    <Grid RowDefinitions="Auto,*,Auto" RowSpacing="14">
+      <TextBlock Text="Launcher update required" FontSize="21" FontWeight="Bold" Foreground="White"/>
+      <StackPanel Grid.Row="1" Spacing="8" VerticalAlignment="Center">
+        <TextBlock Text="A newer version is required before you can continue." FontSize="14" Foreground="White" TextWrapping="Wrap"/>
+        <TextBlock x:Name="VersionText" FontSize="13" Foreground="#C7D9E7"/>
+        <TextBlock x:Name="ErrorText" IsVisible="False" FontSize="12" Foreground="#FFB4A9" TextWrapping="Wrap"/>
+      </StackPanel>
+      <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+        <Button Content="Exit launcher" Click="Exit_Click"/>
+        <Button Content="Update now" Click="UpdateNow_Click" Background="#FFE500" Foreground="#101820" BorderBrush="#FFE500" FontWeight="SemiBold"/>
+      </StackPanel>
+    </Grid>
+  </Border>
+</Window>

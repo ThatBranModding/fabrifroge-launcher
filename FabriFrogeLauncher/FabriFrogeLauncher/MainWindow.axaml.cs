@@ -39,6 +39,8 @@ public partial class MainWindow : Window
     private readonly WebpBackgroundPlayer _backgroundPlayer = new();
     private WriteableBitmap? _backgroundBitmap;
     private bool _backgroundRunning;
+    private bool _windowOpened;
+    private bool _startupUpdatePromptShown;
     private readonly string _backgroundPath;
     private byte[]? _pendingBackgroundFrame;
     private int _backgroundUiQueued;
@@ -53,7 +55,12 @@ public partial class MainWindow : Window
         RamInput.Value = _settings.RamMb;
         Console.IsVisible = false;
         _backgroundPath = Path.Combine(AppContext.BaseDirectory, "Assets", "LauncherBackground", "Lapras", "lapras_day.webp");
-        Opened += (_, _) => UpdateBackgroundPlayback();
+        Opened += async (_, _) =>
+        {
+            _windowOpened = true;
+            UpdateBackgroundPlayback();
+            await ShowStartupUpdatePromptIfNeededAsync();
+        };
         Activated += (_, _) => UpdateBackgroundPlayback();
         // Keep the animated scene moving while the window is visible. Losing
         // keyboard focus (for example, clicking the game launcher) must not
@@ -133,6 +140,44 @@ public partial class MainWindow : Window
         _startupChecksComplete = true;
         UpdateMainActionButton();
         UpdateStartupStatus();
+        await ShowStartupUpdatePromptIfNeededAsync();
+    }
+
+    private async Task ShowStartupUpdatePromptIfNeededAsync()
+    {
+        if (!_windowOpened || !_startupChecksComplete || _startupUpdatePromptShown || _launcherUpdatePackage == null)
+            return;
+
+        _startupUpdatePromptShown = true;
+        string? updateError = null;
+        while (_launcherUpdatePackage != null)
+        {
+            var dialog = new LauncherUpdateDialog(SelfUpdater.GetCurrentVersion(), _launcherUpdateVersion ?? "", updateError);
+            var choice = await dialog.ShowDialog<LauncherUpdateChoice>(this);
+            if (choice == LauncherUpdateChoice.Exit)
+            {
+                Close();
+                return;
+            }
+
+            IsEnabled = false;
+            try
+            {
+                await ApplyLauncherUpdateAsync(_operation.Token);
+                // A successful apply starts a helper and exits this process.
+                // If control returns, treat it as a failed handoff and keep the gate active.
+                updateError = "The updater did not restart the launcher. Try again or exit.";
+            }
+            catch (Exception ex)
+            {
+                updateError = ex.Message;
+                Log($"Required launcher update failed: {ex}");
+            }
+            finally
+            {
+                IsEnabled = true;
+            }
+        }
     }
 
     private async Task<PackManifest> GetManifestAsync(CancellationToken ct)
@@ -166,10 +211,10 @@ public partial class MainWindow : Window
             _mainAction = MainAction.Checking;
         else if (!_packStatusKnown && _launcherUpdatePackage != null)
             _mainAction = MainAction.UpdateLauncher;
-        else if (!_packInstalled)
-            _mainAction = MainAction.Install;
         else if (_launcherUpdatePackage != null)
             _mainAction = MainAction.UpdateLauncher;
+        else if (!_packInstalled)
+            _mainAction = MainAction.Install;
         else if (_packUpdateAvailable)
             _mainAction = MainAction.UpdatePack;
         else
@@ -414,9 +459,13 @@ public partial class MainWindow : Window
         return Task.CompletedTask;
     }
 
-    private async void LauncherUpdate_Click(object? s, RoutedEventArgs e) => await RunAsync("Checking launcher update", async ct =>
+    private async void LauncherUpdate_Click(object? s, RoutedEventArgs e)
     {
-        await CheckLauncherUpdateAsync(true, ct);
-        UpdateStartupStatus();
-    });
+        await RunAsync("Checking launcher update", async ct =>
+        {
+            await CheckLauncherUpdateAsync(true, ct);
+            UpdateStartupStatus();
+        });
+        await ShowStartupUpdatePromptIfNeededAsync();
+    }
 }
