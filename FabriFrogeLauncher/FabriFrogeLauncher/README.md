@@ -41,7 +41,7 @@ The `.github/workflows/release-launcher.yml` workflow builds self-contained rele
 - macOS: `.dmg` installers and `.tar.gz` self-update archives for Intel and Apple silicon. The DMGs include an Applications shortcut. They are unsigned and may show Gatekeeper warnings until signed and notarized by the publisher.
 - Linux: `.deb` installers and `.tar.gz` self-update archives for x64 and ARM64.
 
-Set the project version, then push a matching tag like `launcher-v1.1.8.9`. Add the rotated server password to GitHub repository Actions secrets as `FABRIFROGE_SFTP_PASSWORD`. The workflow creates a GitHub release and uploads installers, self-update archives, checksums, and `launcher-self-latest.json` to `files.fabrifroge.com`; the cross-platform launcher reads `/launcher/v2/self/latest.json`. The legacy Windows-only updater remains at `/launcher/self/latest.json`. Cross-platform modpack data comes from `/launcher/v2/`.
+Set the project version, then push a matching tag like `launcher-v1.1.8.10`. Add the rotated server password to GitHub repository Actions secrets as `FABRIFROGE_SFTP_PASSWORD`. The workflow creates a GitHub release and uploads installers, self-update archives, checksums, and `launcher-self-latest.json` to `files.fabrifroge.com`; the cross-platform launcher reads `/launcher/v2/self/latest.json`. The legacy Windows-only updater remains at `/launcher/self/latest.json`. Cross-platform modpack data comes from `/launcher/v2/`.
 
 Modpack publishing is independent. Run `FabriFrogeLauncher/run-publish-build.bat` or `release/publish-modpack.ps1` to upload only pack metadata and files. It does not modify the launcher feed or upload a launcher binary. The old `publish-release.ps1` remains as a compatibility entry point to the modpack-only publisher.
 

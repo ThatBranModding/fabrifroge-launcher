@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
@@ -50,10 +51,17 @@ public partial class MainWindow : Window
     private int _backgroundUiQueued;
     private int _pendingBackgroundWidth;
     private int _pendingBackgroundHeight;
+    private readonly object _pendingLogsLock = new();
+    private readonly Queue<string> _pendingLogs = new();
+    private const int MaxPendingLogLines = 2000;
+    private const int MaxConsoleCharacters = 160_000;
+    private readonly DispatcherTimer _logFlushTimer = new() { Interval = TimeSpan.FromMilliseconds(120) };
 
     public MainWindow()
     {
         InitializeComponent();
+        _logFlushTimer.Tick += FlushPendingLogs;
+        _logFlushTimer.Start();
         _settings = LauncherSettings.Load(Log);
         InstallPath.Text = _settings.InstallDirectory ?? DefaultInstallRoot();
         var configuredRamMb = _settings.RamMb;
@@ -82,7 +90,7 @@ public partial class MainWindow : Window
             if (e.Property == WindowStateProperty || e.Property == IsVisibleProperty)
                 UpdateBackgroundPlayback();
         };
-        Closed += (_, _) => { SaveLauncherSettings(); _operation.Cancel(); _backgroundPlayer.Dispose(); _backgroundBitmap?.Dispose(); _http.Dispose(); };
+        Closed += (_, _) => { _logFlushTimer.Stop(); SaveLauncherSettings(); _operation.Cancel(); _backgroundPlayer.Dispose(); _backgroundBitmap?.Dispose(); _http.Dispose(); };
         _ = InitializeAsync();
     }
 
@@ -260,7 +268,42 @@ public partial class MainWindow : Window
             return latestVersion > installedVersion;
         return !string.Equals(latest, installed, StringComparison.OrdinalIgnoreCase);
     }
-    private void Log(string message) => Dispatcher.UIThread.Post(() => Console.Text += $"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
+    private void Log(string message)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        lock (_pendingLogsLock)
+        {
+            while (_pendingLogs.Count >= MaxPendingLogLines)
+                _pendingLogs.Dequeue();
+            _pendingLogs.Enqueue(line);
+        }
+    }
+
+    private void FlushPendingLogs(object? sender, EventArgs e)
+    {
+        List<string> batch = new(250);
+        lock (_pendingLogsLock)
+        {
+            while (batch.Count < 250 && _pendingLogs.Count > 0)
+                batch.Add(_pendingLogs.Dequeue());
+        }
+
+        if (batch.Count == 0)
+            return;
+
+        var text = new StringBuilder(Console.Text ?? "", Math.Min(MaxConsoleCharacters + 8192, (Console.Text?.Length ?? 0) + batch.Sum(line => line.Length + Environment.NewLine.Length)));
+        foreach (var line in batch)
+            text.AppendLine(line);
+
+        if (text.Length > MaxConsoleCharacters)
+        {
+            var firstLineEnd = text.ToString().IndexOf('\n', text.Length - MaxConsoleCharacters);
+            text.Remove(0, firstLineEnd >= 0 ? firstLineEnd + 1 : text.Length - MaxConsoleCharacters);
+        }
+
+        Console.Text = text.ToString();
+        Console.CaretIndex = Console.Text.Length;
+    }
     private void ShowBackgroundFrame(int width, int height, byte[] pixels)
     {
         _pendingBackgroundWidth = width;
