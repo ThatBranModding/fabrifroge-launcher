@@ -19,7 +19,19 @@
       <Setter Property="BorderBrush" Value="#AAB7C3"/><Setter Property="Padding" Value="8,5"/>
     </Style>
     <Style Selector="ComboBox"><Setter Property="Background" Value="#F7F8FA"/><Setter Property="Foreground" Value="#182432"/></Style>
-    <Style Selector="ComboBoxItem"><Setter Property="Foreground" Value="#182432"/></Style>
+    <Style Selector="ComboBoxItem">
+      <Setter Property="Background" Value="#F7F8FA"/><Setter Property="Foreground" Value="#182432"/>
+      <Setter Property="Padding" Value="8,5"/>
+    </Style>
+    <Style Selector="ComboBoxItem:pointerover">
+      <Setter Property="Background" Value="#D7E2EA"/><Setter Property="Foreground" Value="#182432"/>
+    </Style>
+    <Style Selector="ComboBoxItem:selected">
+      <Setter Property="Background" Value="#A61E2E"/><Setter Property="Foreground" Value="White"/>
+    </Style>
+    <Style Selector="ComboBoxItem:selected:pointerover">
+      <Setter Property="Background" Value="#B52E5D"/><Setter Property="Foreground" Value="White"/>
+    </Style>
   </Window.Styles>
   <Grid RowDefinitions="46,*" ClipToBounds="True">
     <Image x:Name="BackgroundImage" Grid.RowSpan="2" Stretch="UniformToFill" IsHitTestVisible="False"/>
