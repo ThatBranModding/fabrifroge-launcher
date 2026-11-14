@@ -76,13 +76,12 @@ elif rid.startswith("osx-"):
     }
     with (app / "Contents" / "Info.plist").open("wb") as stream:
         plistlib.dump(info, stream)
-    signing_identity = os.environ.get("APPLE_SIGNING_IDENTITY", "").strip()
+    signing_available = os.environ.get("APPLE_SIGNING_AVAILABLE", "").strip().lower() == "true"
+    signing_identity = os.environ.get("APPLE_SIGNING_IDENTITY", "").strip() if signing_available else ""
     apple_id = os.environ.get("APPLE_ID", "").strip()
     team_id = os.environ.get("APPLE_TEAM_ID", "").strip()
     app_password = os.environ.get("APPLE_APP_SPECIFIC_PASSWORD", "").strip()
     is_tagged_release = os.environ.get("GITHUB_REF_TYPE") == "tag"
-    if is_tagged_release and not (signing_identity and apple_id and team_id and app_password):
-        raise SystemExit("Tagged macOS releases require Developer ID signing and Apple notarization credentials.")
     if signing_identity:
         entitlements = Path(__file__).parent / "Assets" / "AppIcon" / "macos-entitlements.plist"
         nested = [path for path in app.rglob("*") if path.is_file() and
@@ -94,7 +93,7 @@ elif rid.startswith("osx-"):
                         "--sign", signing_identity, "--entitlements", str(entitlements), str(app)], check=True)
         subprocess.run(["codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app)], check=True)
     elif is_tagged_release:
-        raise SystemExit("Tagged macOS releases must be signed with a Developer ID certificate.")
+        print("Building unsigned macOS app. Users will need to approve it in Privacy & Security on first launch.")
 
     dmg_root = args.output / f"dmg-root-{rid}"
     if dmg_root.exists():
@@ -106,11 +105,13 @@ elif rid.startswith("osx-"):
     subprocess.run(["hdiutil", "create", "-volname", "FabriFroge Launcher", "-srcfolder", str(dmg_root), "-ov", "-format", "UDZO", str(dmg)], check=True)
     if signing_identity:
         subprocess.run(["codesign", "--force", "--timestamp", "--sign", signing_identity, str(dmg)], check=True)
-    if is_tagged_release:
+    if is_tagged_release and signing_identity and apple_id and team_id and app_password:
         subprocess.run(["xcrun", "notarytool", "submit", str(dmg), "--apple-id", apple_id,
                         "--team-id", team_id, "--password", app_password, "--wait"], check=True)
         subprocess.run(["xcrun", "stapler", "staple", str(dmg)], check=True)
         subprocess.run(["xcrun", "stapler", "validate", str(dmg)], check=True)
+    elif is_tagged_release and signing_identity:
+        print("Developer ID signature created, but notarization credentials are missing; macOS may still require user approval.")
     shutil.rmtree(dmg_root)
 else:
     raise SystemExit(f"Unsupported RID: {rid}")

@@ -52,6 +52,9 @@
     .platforms { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
     .platform { padding: 20px; border: 1px solid var(--line); border-radius: 15px; background: var(--panel); }
     .platform h3 { margin: 0 0 14px; font-size: 1.03rem; }
+    .mac-note { margin-top: 18px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--muted); line-height: 1.6; }
+    .mac-note strong { color: #eff6ff; }
+    .mac-note a { color: #c2f8d8; }
     .option { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid var(--line); }
     .option:first-of-type { border-top: 0; }
     .option-label { color: #d8e3ee; font-size: .91rem; }
@@ -96,6 +99,7 @@
         <section class="platform"><h3>macOS</h3><p>Loading installers…</p></section>
         <section class="platform"><h3>Linux</h3><p>Loading installers…</p></section>
       </div>
+      <aside class="mac-note"><strong>macOS first launch:</strong> This download is not notarized by Apple. After installing it, try opening FabriFroge Launcher once. If macOS blocks it, go to <strong>System Settings → Privacy &amp; Security</strong>, scroll to Security, choose <strong>Open Anyway</strong>, and confirm. <a href="https://support.apple.com/en-gb/guide/mac-help/mh40617/mac" rel="noopener">Apple’s instructions</a>.</aside>
       <nav class="secondary" aria-label="More downloads">
         <a href="https://github.com/ThatBranModding/fabrifroge-launcher/releases/latest">GitHub release and checksums</a>
         <a href="https://fabrifroge.com/">Project information</a>

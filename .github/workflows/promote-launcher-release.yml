@@ -20,12 +20,13 @@ jobs:
     if: inputs.confirm == 'PROMOTE'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Validate staged release and installer links
         env:
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]
           url="https://files.fabrifroge.com/launcher/v2/self/releases/$VERSION/launcher-self-latest.json"
           curl --fail --silent --show-error "$url" -o latest.json
           python - "$VERSION" <<'PY'
@@ -70,6 +71,7 @@ jobs:
           trap 'rm -f "$batch"' EXIT
           printf '%s\n' \
             'cd "/C:/Users/Branserver/Downloads/nginx-1.26.3/www"' \
+            'put docs/download/index.html download/index.html' \
             'put latest.json download/latest.json' \
             'cd "/C:/Users/Branserver/Downloads/nginx-1.26.3/www/files"' \
             'put latest.json launcher/v2/self/latest.json' \

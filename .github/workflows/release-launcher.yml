@@ -44,11 +44,8 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${APPLE_CERTIFICATE_P12_BASE64:-}" || -z "${APPLE_CERTIFICATE_PASSWORD:-}" || -z "${APPLE_SIGNING_IDENTITY:-}" ]]; then
-            if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
-              echo "Tagged macOS releases require Apple Developer ID signing secrets." >&2
-              exit 1
-            fi
-            echo "Unsigned macOS preview package only; tagged releases are blocked without signing credentials."
+            echo "APPLE_SIGNING_AVAILABLE=false" >> "$GITHUB_ENV"
+            echo "No Apple signing certificate configured; macOS packages will be unsigned. Users will need to approve the app in Privacy & Security."
             exit 0
           fi
           keychain="$RUNNER_TEMP/fabrifroge-signing.keychain-db"
@@ -60,6 +57,7 @@ jobs:
           security import "$cert" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$keychain"
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          echo "APPLE_SIGNING_AVAILABLE=true" >> "$GITHUB_ENV"
           rm -f "$cert"
       - name: Read version
         id: version
