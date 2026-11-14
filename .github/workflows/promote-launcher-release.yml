@@ -44,7 +44,10 @@ jobs:
               for rid, package in entries.items():
                   if not package.get("sha256") or len(package["sha256"]) != 64:
                       raise SystemExit(f"Missing SHA-256 for {group}/{rid}")
-                  request = urllib.request.Request(package["url"], method="HEAD")
+                  request = urllib.request.Request(
+                      package["url"], method="HEAD",
+                      headers={"User-Agent": "Mozilla/5.0 (compatible; FabriFrogeLauncherRelease)"},
+                  )
                   with urllib.request.urlopen(request, timeout=30) as response:
                       if response.status != 200:
                           raise SystemExit(f"Unavailable package: {package['url']}")
