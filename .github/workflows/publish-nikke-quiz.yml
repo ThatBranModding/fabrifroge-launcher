@@ -54,9 +54,9 @@ jobs:
           trap 'rm -f "$batch_file" "$output_file"' EXIT
           printf '%s\n' \
             "put \"quiz-site/nikke-quiz/index.html\" \"$remote_quiz/index.html\"" \
-            "put \"quiz-site/nikke-quiz/style.css\" \"$remote_quiz/style.css\"" \
-            "put \"quiz-site/nikke-quiz/data.js\" \"$remote_quiz/data.js\"" \
-            "put \"quiz-site/nikke-quiz/app.js\" \"$remote_quiz/app.js\"" > "$batch_file"
+            "put \"quiz-site/nikke-quiz/style.css\" \"$remote_quiz/style.v3.css\"" \
+            "put \"quiz-site/nikke-quiz/data.js\" \"$remote_quiz/data.v3.js\"" \
+            "put \"quiz-site/nikke-quiz/app.js\" \"$remote_quiz/app.v3.js\"" > "$batch_file"
           if ! sshpass -e sftp -P 22 \
             -o PreferredAuthentications=password \
             -o PubkeyAuthentication=no \
@@ -72,7 +72,6 @@ jobs:
             echo "SFTP reported an error while publishing the NIKKE quiz" >&2
             exit 1
           fi
-          for asset in index.html style.css data.js app.js; do
+          for asset in index.html style.v3.css data.v3.js app.v3.js; do
             grep -Fq "$remote_quiz/$asset" "$output_file"
           done
-
