@@ -42,6 +42,7 @@ public partial class MainWindow : Window
     private bool _packInstalled;
     private bool _packUpdateAvailable;
     private bool _isBusy;
+    private bool _launcherUpdatePendingRestart;
     private CancellationTokenSource _operation = new();
     private readonly WebpBackgroundPlayer _backgroundPlayer = new();
     private WriteableBitmap? _backgroundBitmap;
@@ -258,7 +259,7 @@ public partial class MainWindow : Window
             _ => "Checking…"
         };
         PlayButtonIcon.Text = _mainAction == MainAction.Play ? "▶" : _mainAction == MainAction.Checking ? "…" : "↓";
-        PlayButton.IsEnabled = !_isBusy && _mainAction != MainAction.Checking;
+        PlayButton.IsEnabled = !_isBusy && !_launcherUpdatePendingRestart && _mainAction != MainAction.Checking;
     }
 
     private void UpdateStartupStatus()
@@ -398,6 +399,8 @@ public partial class MainWindow : Window
     });
     private async void Play_Click(object? s, RoutedEventArgs e)
     {
+        if (_launcherUpdatePendingRestart) return;
+
         switch (_mainAction)
         {
             case MainAction.Install:
@@ -531,6 +534,15 @@ public partial class MainWindow : Window
     {
         if (_launcherUpdateVersion == null)
             await CheckLauncherUpdateAsync(false, ct);
+
+        if (_launcherUpdateVersion == null)
+            throw new InvalidOperationException("No launcher update is available.");
+
+        // Keep this process from launching Minecraft once an update has begun.
+        // A successful handoff exits this process; only the updated instance
+        // starts with the gate cleared.
+        _launcherUpdatePendingRestart = true;
+        UpdateMainActionButton();
 
         var package = _launcherUpdatePackage;
         if (package != null && !string.IsNullOrWhiteSpace(package.Url) &&
