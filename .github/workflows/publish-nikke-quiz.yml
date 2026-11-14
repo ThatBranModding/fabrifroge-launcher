@@ -20,6 +20,10 @@ jobs:
           repository: ThatBranModding/nikke-quiz
           ref: main
           path: quiz-site
+      - name: Validate quiz scripts
+        run: |
+          node --check quiz-site/nikke-quiz/data.js
+          node --check quiz-site/nikke-quiz/app.js
       - name: Upload quiz page to homeserver
         env:
           SSHPASS: ${{ secrets.FABRIFROGE_SFTP_PASSWORD }}
@@ -71,3 +75,4 @@ jobs:
           for asset in index.html style.css data.js app.js; do
             grep -Fq "$remote_quiz/$asset" "$output_file"
           done
+
