@@ -1,0 +1,73 @@
+name: Publish NIKKE quiz
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-nikke-quiz.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ThatBranModding/nikke-quiz
+          ref: main
+          path: quiz-site
+      - name: Upload quiz page to homeserver
+        env:
+          SSHPASS: ${{ secrets.FABRIFROGE_SFTP_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SSHPASS:-}" ]]; then
+            echo "Missing repository secret FABRIFROGE_SFTP_PASSWORD" >&2
+            exit 1
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          ssh-keyscan -t ed25519 ftp.fabrifroge.com > "$HOME/.ssh/host-key-scan" 2>/dev/null
+          actual_fingerprint="$(ssh-keygen -lf "$HOME/.ssh/host-key-scan" -E sha256 | awk '{print $2}' | sed 's/^SHA256://' | sed 's/=*$//')"
+          expected_fingerprint='jygYqLouvUiCQUTXy1r0EWmRXpoWSO/OHCPVwOBPiZg'
+          if [[ "$actual_fingerprint" != "$expected_fingerprint" ]]; then
+            echo "SFTP host key does not match the pinned fingerprint" >&2
+            exit 1
+          fi
+          cp "$HOME/.ssh/host-key-scan" "$HOME/.ssh/known_hosts"
+          rm "$HOME/.ssh/host-key-scan"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          remote_quiz='/C:/Users/Branserver/Downloads/nginx-1.26.3/www/nikke-quiz'
+          batch_file="$(mktemp)"
+          output_file="$(mktemp)"
+          trap 'rm -f "$batch_file" "$output_file"' EXIT
+          printf '%s\n' \
+            "put \"quiz-site/nikke-quiz/index.html\" \"$remote_quiz/index.html\"" \
+            "put \"quiz-site/nikke-quiz/style.css\" \"$remote_quiz/style.css\"" \
+            "put \"quiz-site/nikke-quiz/data.js\" \"$remote_quiz/data.js\"" \
+            "put \"quiz-site/nikke-quiz/app.js\" \"$remote_quiz/app.js\"" > "$batch_file"
+          if ! sshpass -e sftp -P 22 \
+            -o PreferredAuthentications=password \
+            -o PubkeyAuthentication=no \
+            -o BatchMode=no \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            launcher@ftp.fabrifroge.com < "$batch_file" > "$output_file" 2>&1; then
+            cat "$output_file"
+            exit 1
+          fi
+          cat "$output_file"
+          if grep -Eiq 'permission denied|couldn.t stat|dest open|remote .*failure' "$output_file"; then
+            echo "SFTP reported an error while publishing the NIKKE quiz" >&2
+            exit 1
+          fi
+          for asset in index.html style.css data.js app.js; do
+            grep -Fq "$remote_quiz/$asset" "$output_file"
+          done
