@@ -169,8 +169,9 @@ public static class GameEngine
 
         using var registration = ct.Register(() =>
         {
+            // Closing the launcher cancels its operation token. Stop waiting,
+            // but leave Minecraft running so the game can save its settings.
             proc.Exited -= OnExit;
-            try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch { }
             tcs.TrySetCanceled(ct);
         });
 

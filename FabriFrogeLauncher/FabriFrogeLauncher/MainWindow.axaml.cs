@@ -145,9 +145,10 @@ public partial class MainWindow : Window
             Status.Text = "Modpack information unavailable";
         }
 
+        using var authStartupCheck = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         try
         {
-            _session = AuthService.TryLoadSession(Root, Log);
+            _session = await RestoreCachedSessionSilentlyAsync(authStartupCheck.Token);
             AccountLabel.Text = _session?.Username ?? "Playing offline";
         }
         catch (Exception ex) { Log($"Account startup check failed: {ex.Message}"); }
@@ -426,25 +427,56 @@ public partial class MainWindow : Window
         await GameEngine.LaunchAsync(_http, installRoot, m, session, user, CurrentRamMb, Log, ct,
             gameDirectory);
     }
+    private async Task<MSession?> RestoreCachedSessionSilentlyAsync(CancellationToken ct)
+    {
+        var cached = AuthService.TryLoadSession(Root, Log);
+        if (cached == null || string.IsNullOrWhiteSpace(cached.AccessToken)) return cached;
+        if (await IsMinecraftSessionValidAsync(cached, ct)) return cached;
+
+        Log("Cached Minecraft session expired; trying a silent Microsoft refresh.");
+        return await AuthService.TryAuthenticateSilentlyAsync(Root, Log, ct) ?? cached;
+    }
+
+    private async Task<bool> IsMinecraftSessionValidAsync(MSession session, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.minecraftservices.com/minecraft/profile");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
+        try
+        {
+            using var response = await _http.SendAsync(request, ct);
+            return response.StatusCode != HttpStatusCode.Unauthorized &&
+                   response.StatusCode != HttpStatusCode.Forbidden &&
+                   ((int)response.StatusCode >= 500 || response.IsSuccessStatusCode);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (HttpRequestException ex)
+        {
+            Log($"Could not validate cached Minecraft session because the service is unreachable: {ex.Message}");
+            return true;
+        }
+    }
+
     private async Task<MSession> EnsureFreshSessionForPlayAsync(CancellationToken ct)
     {
         var loaded = AuthService.TryLoadSession(Root, Log);
         if (loaded != null) _session = loaded;
         var current = _session ?? MSession.CreateOfflineSession(Environment.UserName);
         if (string.IsNullOrWhiteSpace(current.AccessToken)) return current;
-        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.minecraftservices.com/minecraft/profile");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", current.AccessToken);
-        bool valid;
-        try
+        if (await IsMinecraftSessionValidAsync(current, ct)) return current;
+
+        Log("Microsoft session expired; trying a silent refresh before asking the player to sign in.");
+        var refreshed = await AuthService.TryAuthenticateSilentlyAsync(Root, Log, ct);
+        if (refreshed != null)
         {
-            using var response = await _http.SendAsync(request, ct);
-            valid = response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden
-                ? false : (int)response.StatusCode >= 500 || response.IsSuccessStatusCode;
+            _session = refreshed;
+            AccountLabel.Text = refreshed.Username;
+            return refreshed;
         }
-        catch (HttpRequestException) { valid = true; }
-        if (valid) return current;
-        Log("Microsoft session expired; starting sign-in again.");
-        Log("Opening the default browser for Microsoft sign-in...");
+
+        Log("Silent refresh was unavailable; opening the default browser for Microsoft sign-in...");
         _session = await AuthService.SignInMicrosoftAsync(Root, Log, ct);
         AccountLabel.Text = _session.Username;
         return _session;

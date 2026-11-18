@@ -311,6 +311,37 @@ public static class AuthService
     }
 
     /// <summary>
+    /// Refresh the most recently used Microsoft account without opening a browser.
+    /// Returns null when MSAL has no usable cached account or refresh is unavailable.
+    /// </summary>
+    public static async Task<MSession?> TryAuthenticateSilentlyAsync(
+        string installRoot,
+        Action<string> log,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        try
+        {
+            var loginHandler = await BuildLoginHandlerAsync().ConfigureAwait(false);
+            var session = await loginHandler.AuthenticateSilently(ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            ValidateSessionOrThrow(session);
+            SaveSession(installRoot, session, log);
+            log($"Microsoft silent refresh OK: {session.Username} ({session.UUID})");
+            return session;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            log($"Microsoft silent refresh unavailable: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Signs out launcher-owned cached session file(s) and library/MSAL auth state.
     /// </summary>
     public static async Task SignOutAsync(string installRoot, Action<string> log)
