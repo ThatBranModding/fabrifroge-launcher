@@ -6,9 +6,9 @@
     <DefaultItemExcludesInProjectFolder>$(DefaultItemExcludesInProjectFolder);artifacts/**;.dotnet-home/**;MigrationReference/**</DefaultItemExcludesInProjectFolder>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>1.2.2</Version>
-    <AssemblyVersion>1.2.2</AssemblyVersion>
-    <FileVersion>1.2.2</FileVersion>
+    <Version>1.2.3</Version>
+    <AssemblyVersion>1.2.3</AssemblyVersion>
+    <FileVersion>1.2.3</FileVersion>
     <ApplicationIcon>Assets/AppIcon/app.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>

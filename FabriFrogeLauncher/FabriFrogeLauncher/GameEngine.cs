@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
@@ -64,7 +65,7 @@ public static class GameEngine
         int xmx = Math.Clamp(ramMb, 2048, 65536);
         int xms = Math.Clamp(xmx / 2, 1024, xmx);
 
-        return new List<string>
+        var args = new List<string>
         {
             $"-Xms{xms}M",
             $"-Xmx{xmx}M",
@@ -85,6 +86,16 @@ public static class GameEngine
             "-Dsun.rmi.dgc.client.gcInterval=2147483646",
             "-Dfile.encoding=UTF-8"
         };
+
+        // These HotSpot mitigations are specific to x86-64. Keep them off ARM builds.
+        if (RuntimeInformation.ProcessArchitecture == Architecture.X64)
+        {
+            args.Add("-XX:UseAVX=2");
+            args.Add("-XX:+UnlockDiagnosticVMOptions");
+            args.Add("-XX:-UseBASE64Intrinsics");
+        }
+
+        return args;
     }
 
     /// <summary>
